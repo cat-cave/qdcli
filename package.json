@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
+    "ci": "pnpm run lint && pnpm run build && pnpm run typecheck && pnpm run test",
     "dev:view": "pnpm --filter @qdcli/viewer dev",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml,nix}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml,nix}\"",

@@ -6,6 +6,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "references": [{ "path": "../../packages/core" }],
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }
