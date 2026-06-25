@@ -1,0 +1,26 @@
+{
+  "name": "qdcli",
+  "version": "0.1.0",
+  "description": "Quick DAG CLI for agent-readable project orchestration",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cat-cave/qdcli.git"
+  },
+  "bin": {
+    "qd": "./dist/index.mjs"
+  },
+  "files": ["dist", "README.md"],
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts --banner.js \"#!/usr/bin/env node\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@qdcli/core": "workspace:*"
+  }
+}
