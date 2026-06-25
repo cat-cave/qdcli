@@ -1,8 +1,8 @@
 # qdcli
 
-Quick DAG is a thin CLI for agent-readable project orchestration. It stores a repo-local DAG of executable spec nodes, dependency edges, audit findings, lifecycle runs, CI state, and merge state.
+Quick DAG is a thin CLI for orchestrator-led agentic project work. It stores a repo-local DAG of executable spec nodes, dependency edges, audit findings, lifecycle runs, CI state, and merge state.
 
-qd does not run agents. It gives Codex, Claude, and other agents a durable protocol for choosing ready work, claiming it, auditing it, resolving P0/P1 findings, promoting P2/P3 findings, and tracking velocity.
+qd does not run agents or decide where subagents execute. The intended model is one central orchestrator agent keeping the DAG accurate, selecting ready nodes, and delegating implementation or audit work to subagents in worktrees, remote machines, or whatever execution setup fits the project. qd stays simple: dependencies must be respected, specs must be completed, audits must happen, P0/P1 findings must be resolved, P2/P3 findings must enter the DAG, and CI must pass before merge.
 
 ## Install For Development
 
@@ -41,4 +41,4 @@ qd view
 
 ## Agent Bootstrap
 
-Install/read the qd DAG skill, run `qd doctor`, inspect `qd status` and `qd ready`, then help build or complete the DAG.
+Install/read the qd DAG skill, run `qd doctor`, inspect `qd status` and `qd ready`, then operate as the orchestrator: keep the DAG clean, delegate ready nodes, audit results, and require green CI before merge.

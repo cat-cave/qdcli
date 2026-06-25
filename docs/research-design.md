@@ -2,16 +2,16 @@
 
 ## Scope
 
-`qdcli` is a local-first DAG operating system for coding agents. It does not run agents, route model calls, or replace Claude/Codex goal mode. It owns the durable state that agents consult and update:
+`qdcli` is a local-first DAG ledger for orchestrator-led coding agents. It does not run agents, route model calls, or replace Claude/Codex goal mode. It owns the durable state that the orchestrator consults and updates while delegating work:
 
 - project decomposition as a DAG
 - dependency-safe task claiming
-- worktree/audit/resolve/CI/merge lifecycle
+- implementation/audit/resolve/CI/merge lifecycle, regardless of whether subagents run in worktrees, remote machines, or another setup
 - findings and quality gates
 - velocity, estimates, and milestone status
 - prompts and guardrails that help agents create useful DAGs
 
-The core product should stay thin: a fast CLI, a SQLite-compatible database, a small Vite viewer, and first-class agent skills/instructions.
+The core product should stay thin: a fast CLI, a SQLite-compatible database, a small Vite viewer, and first-class orchestrator-agent skills/instructions.
 
 ## Research signals
 

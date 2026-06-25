@@ -1,6 +1,6 @@
 # qd setup
 
-Install qd, install the agent skills, initialize your repository, then verify that agents can use the DAG correctly.
+Install qd, install the agent skills, initialize your repository, then verify that an orchestrator agent can use the DAG correctly.
 
 ## 1. Install the CLI
 
@@ -26,7 +26,7 @@ qd --version
 
 ## 2. Install agent skills
 
-qd ships instructions for agents because the CLI is only useful when agents follow the DAG protocol.
+qd ships instructions for agents because the CLI is only useful when the orchestrator follows the DAG protocol and delegates work without bypassing qd's gates.
 
 Planned commands:
 
@@ -36,10 +36,10 @@ qd agent install claude
 qd agent install skills-sh
 ```
 
-The installed skill should teach the agent to:
+The installed skill should teach the orchestrator to:
 
-- use `qd ready` before choosing work
-- use `qd claim` before editing files
+- use `qd ready` before choosing work to delegate
+- use `qd claim` to mark delegated ownership
 - use `qd prompt implement <node>` for scoped context
 - record progress with `qd complete`
 - create audit findings with `qd finding add`
@@ -67,7 +67,7 @@ qd config set check-command --value "nix develop -c just ci"
 qd config set ci-command --value "nix develop -c just ci"
 ```
 
-Use the repository's real equivalent if it is not Nix. qd assumes this command is what makes a node safe to merge.
+Use the repository's real equivalent if it is not Nix. qd assumes this command is what makes a node safe to merge. The intended policy is green main: if CI does not pass, the node does not merge.
 
 ## 4. Verify it works
 
@@ -88,10 +88,10 @@ qd ready
 
 ## 5. Hand off to an agent
 
-Give the agent one operational instruction:
+Give the orchestrator agent one operational instruction:
 
 ```text
-Read the qd DAG skill, run qd doctor, inspect qd status and qd ready, then help me build or complete the DAG.
+Read the qd DAG skill, run qd doctor, inspect qd status and qd ready, then orchestrate the DAG: delegate ready nodes, record audits and findings, require CI green, and merge only qd-mergeable work.
 ```
 
 For a single-link bootstrap, planned command:
