@@ -42,6 +42,7 @@ import {
   velocityReport,
   writeConfig,
   type QdConfig,
+  type AddNodeInput,
   type EdgeType,
   type NodeKind,
   type NodeStatus,
@@ -281,14 +282,14 @@ async function nodeCommand(
       await addNode(root, {
         id: stringOpt(options.id),
         title: required(options.title, "--title"),
-        kind: enumOpt<NodeKind>(options.kind) ?? "feature",
+        kind: strictEnumOpt(options.kind, isNodeKind, "--kind", "feature"),
         milestone: stringOpt(options.milestone),
         groupName: stringOpt(options.group),
         projects: stringListOpt(options.project),
-        status: enumOpt<NodeStatus>(options.status) ?? "ready",
-        priority: enumOpt<Priority>(options.priority) ?? "P2",
+        status: strictEnumOpt(options.status, isNodeStatus, "--status", "ready"),
+        priority: strictEnumOpt(options.priority, isPriority, "--priority", "P2"),
         estimatePoints: numberOpt(options.estimate) ?? 1,
-        risk: enumOpt<Risk>(options.risk) ?? "medium",
+        risk: strictEnumOpt(options.risk, isRisk, "--risk", "medium"),
         spec: required(options.spec, "--spec"),
         acceptance: required(options.acceptance, "--acceptance"),
         validation: stringOpt(options.validation),
@@ -309,14 +310,14 @@ async function nodeCommand(
     return output(
       await updateNode(root, requiredArg(id, "node id"), {
         title: stringOpt(options.title),
-        kind: enumOpt<NodeKind>(options.kind),
+        kind: strictEnumOpt(options.kind, isNodeKind, "--kind"),
         milestone: stringOpt(options.milestone),
         group_name: stringOpt(options.group),
         projects: options.project ? stringListOpt(options.project) : undefined,
-        status: enumOpt<NodeStatus>(options.status),
-        priority: enumOpt<Priority>(options.priority),
+        status: strictEnumOpt(options.status, isNodeStatus, "--status"),
+        priority: strictEnumOpt(options.priority, isPriority, "--priority"),
         estimatePoints: numberOpt(options.estimate),
-        risk: enumOpt<Risk>(options.risk),
+        risk: strictEnumOpt(options.risk, isRisk, "--risk"),
         spec: stringOpt(options.spec),
         acceptance: stringOpt(options.acceptance),
         validation: stringOpt(options.validation),
@@ -347,7 +348,7 @@ async function edgeCommand(
         root,
         requiredArg(values[0], "from node"),
         requiredArg(values[1], "to node"),
-        enumOpt<EdgeType>(options.type) ?? "requires",
+        strictEnumOpt(options.type, isEdgeType, "--type", "requires"),
       ),
       json,
     );
@@ -357,7 +358,7 @@ async function edgeCommand(
       root,
       requiredArg(values[0], "from node"),
       requiredArg(values[1], "to node"),
-      enumOpt<EdgeType>(options.type) ?? "requires",
+      strictEnumOpt(options.type, isEdgeType, "--type", "requires"),
     );
     return output({ ok: true }, json);
   }
@@ -385,7 +386,7 @@ async function findingCommand(
   if (action === "add") {
     return output(
       await addFinding(root, requiredArg(nodeOrFinding, "node id"), {
-        severity: enumOpt<Priority>(options.severity) ?? "P2",
+        severity: strictEnumOpt(options.severity, isPriority, "--severity", "P2"),
         title: required(options.title, "--title"),
         evidence: required(options.evidence, "--evidence"),
         path: stringOpt(options.path),
@@ -531,67 +532,160 @@ async function importCommand(
 ): Promise<void> {
   const filePath = path.resolve(root, required(options.from, "--from"));
   const mappingPath = stringOpt(options["schema-mapping"]);
+  const dryRun = Boolean(options["dry-run"]);
+  const verbose = Boolean(options.verbose);
   const source = JSON.parse(await readFile(filePath, "utf8")) as unknown;
   const mapping = mappingPath
     ? (JSON.parse(await readFile(path.resolve(root, mappingPath), "utf8")) as ImportMapping)
     : defaultImportMapping;
-  const nodes = arrayAtPath(source, mapping.nodesPath ?? "nodes");
-  const edges = arrayAtPath(source, mapping.edgesPath ?? "edges");
+  const nodes = strictArrayAtPath(source, mapping.nodesPath ?? "nodes", true);
+  const edges = strictArrayAtPath(source, mapping.edgesPath ?? "edges", false);
+  const report: ImportReport = {
+    ok: true,
+    dryRun,
+    nodesFound: nodes.length,
+    edgesFound: edges.length,
+    importedNodes: 0,
+    importedEdges: 0,
+    defaults: [],
+    droppedFields: [],
+    warnings: [],
+    errors: [],
+    nodes: [],
+    edges: [],
+  };
   const importedNodes = [];
   const importedEdges = [];
+  const plannedImportEdges: PlannedImportEdge[] = [];
+  const plannedEdges = new Set<string>();
+  const nodeKeysUsed = usedNodeMappingKeys(mapping);
+  if (nodes.length === 0) report.errors.push(`No nodes found at ${mapping.nodesPath ?? "nodes"}`);
 
-  for (const raw of nodes) {
-    const node = await addNode(root, {
-      id: stringAt(raw, mapping.id ?? "id"),
-      title:
-        stringAt(raw, mapping.title ?? "title") ??
-        stringAt(raw, mapping.id ?? "id") ??
-        "Imported node",
-      kind: enumString<NodeKind>(stringAt(raw, mapping.kind ?? "kind")) ?? "feature",
-      milestone: stringAt(raw, mapping.milestone ?? "milestone"),
-      groupName: stringAt(raw, mapping.group ?? "group"),
-      projects: stringArrayAt(raw, mapping.projects ?? "projects"),
-      status: enumString<NodeStatus>(stringAt(raw, mapping.status ?? "status")) ?? "ready",
-      priority: enumString<Priority>(stringAt(raw, mapping.priority ?? "priority")) ?? "P2",
-      estimatePoints: numberAt(raw, mapping.estimate ?? "estimate") ?? 1,
-      risk: enumString<Risk>(stringAt(raw, mapping.risk ?? "risk")) ?? "medium",
-      spec:
-        stringAt(raw, mapping.spec ?? "spec") ??
-        stringAt(raw, mapping.title ?? "title") ??
-        "Imported spec",
-      acceptance:
-        stringAt(raw, mapping.acceptance ?? "acceptance") ??
-        "Imported acceptance criteria must be verified.",
-      validation: stringAt(raw, mapping.validation ?? "validation"),
-      verification: verificationArrayAt(raw, mapping.verification ?? "verification"),
-      auditFocus: stringArrayAt(raw, mapping.auditFocus ?? "auditFocus"),
-      context: stringAt(raw, mapping.context ?? "context"),
-      statusReason: stringAt(raw, mapping.statusReason ?? "statusReason"),
-    });
-    importedNodes.push(node);
-  }
+  const plannedNodes = nodes.flatMap((raw, index): PlannedImportNode[] => {
+    try {
+      const planned = mapImportNode(raw, index, mapping, report, verbose);
+      const dropped = droppedTopLevelKeys(raw, nodeKeysUsed);
+      if (dropped.length > 0) {
+        report.droppedFields.push({
+          nodeId: planned.input.id ?? planned.sourceId,
+          fields: dropped,
+        });
+        if (verbose)
+          importVerbose(`node ${planned.sourceId}: dropped unmapped fields ${dropped.join(", ")}`);
+      }
+      report.nodes.push(planned.input);
+      return [planned];
+    } catch (error) {
+      report.errors.push(error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  });
 
-  for (const raw of edges) {
+  for (const [index, raw] of edges.entries()) {
     const from = stringAt(raw, mapping.edgeFrom ?? "from");
     const to = stringAt(raw, mapping.edgeTo ?? "to");
-    if (!from || !to) continue;
-    importedEdges.push(
-      await addEdge(
-        root,
-        from,
-        to,
-        enumString<EdgeType>(stringAt(raw, mapping.edgeType ?? "type")) ?? "requires",
-      ),
-    );
+    if (!from || !to) {
+      report.errors.push(
+        `edges[${index}] must include ${mapping.edgeFrom ?? "from"} and ${mapping.edgeTo ?? "to"}`,
+      );
+      continue;
+    }
+    try {
+      const type = strictOptionalEnum<EdgeType>(
+        stringAt(raw, mapping.edgeType ?? "type"),
+        isEdgeType,
+        "edge.type",
+        "requires",
+      );
+      planImportEdge({ from, to, type, source: "edges" }, plannedImportEdges, report, plannedEdges);
+    } catch (error) {
+      report.errors.push(error instanceof Error ? error.message : String(error));
+    }
   }
 
-  return output(
-    {
-      importedNodes: importedNodes.length,
-      importedEdges: importedEdges.length,
-    },
-    json,
-  );
+  if (mapping.nodeEdges) {
+    try {
+      validateNodeEdgesMapping(mapping.nodeEdges);
+    } catch (error) {
+      report.errors.push(error instanceof Error ? error.message : String(error));
+    }
+    for (const planned of plannedNodes) {
+      let refs: string[] = [];
+      try {
+        refs = strictStringArrayAt(
+          planned.raw,
+          mapping.nodeEdges.path,
+          `node ${planned.sourceId}.nodeEdges`,
+        );
+      } catch (error) {
+        report.errors.push(error instanceof Error ? error.message : String(error));
+        continue;
+      }
+      if (refs.length === 0) continue;
+      const type = mapping.nodeEdges.edgeType ?? "requires";
+      if (!isEdgeType(type)) {
+        report.errors.push(`nodeEdges.edgeType must be one of ${EDGE_TYPES.join(", ")}`);
+        continue;
+      }
+      for (const ref of refs) {
+        const edge =
+          mapping.nodeEdges.edgeDirection === "deps-block-this-node"
+            ? {
+                from: ref,
+                to: planned.sourceId,
+                type,
+                source: `nodeEdges:${mapping.nodeEdges.path}`,
+              }
+            : {
+                from: planned.sourceId,
+                to: ref,
+                type,
+                source: `nodeEdges:${mapping.nodeEdges.path}`,
+              };
+        planImportEdge(edge, plannedImportEdges, report, plannedEdges);
+      }
+    }
+  }
+
+  if (report.errors.length === 0) {
+    const nodeIds = new Set(plannedNodes.map((node) => node.sourceId));
+    if (nodeIds.size !== plannedNodes.length)
+      report.errors.push("Import contains duplicate node ids");
+    for (const edge of plannedImportEdges) {
+      if (!nodeIds.has(edge.from))
+        report.errors.push(`edge references missing from node: ${edge.from}`);
+      if (!nodeIds.has(edge.to)) report.errors.push(`edge references missing to node: ${edge.to}`);
+    }
+    const cycle = findImportCycle(plannedImportEdges.filter((edge) => edge.type === "requires"));
+    if (cycle) report.errors.push(`requires edge cycle detected: ${cycle.join(" -> ")}`);
+  }
+
+  if (report.errors.length === 0 && !dryRun) {
+    const existingNodes = await listNodes(root);
+    if (existingNodes.length > 0) {
+      report.errors.push(
+        "qd import requires an empty qd DAG. Run imports before creating nodes, or use --dry-run to inspect a mapping.",
+      );
+    }
+  }
+
+  if (report.errors.length === 0 && !dryRun) {
+    for (const planned of plannedNodes) importedNodes.push(await addNode(root, planned.input));
+    for (const edge of plannedImportEdges) {
+      importedEdges.push(await addEdge(root, edge.from, edge.to, edge.type));
+    }
+  }
+
+  if (dryRun && report.errors.length === 0) {
+    importedNodes.push(...plannedNodes.map((node) => node.input));
+    importedEdges.push(...plannedImportEdges);
+  }
+
+  report.importedNodes = importedNodes.length;
+  report.importedEdges = importedEdges.length;
+  report.ok = report.errors.length === 0;
+  output(report, json);
+  if (!report.ok) process.exitCode = 1;
 }
 
 async function promptCommand(
@@ -768,16 +862,60 @@ interface ImportMapping {
   priority?: string;
   estimate?: string;
   risk?: string;
-  spec?: string;
-  acceptance?: string;
+  spec?: ImportTextMapping;
+  acceptance?: ImportTextMapping;
   validation?: string;
   verification?: string;
   auditFocus?: string;
   context?: string;
   statusReason?: string;
+  statusMap?: Record<string, NodeStatus>;
+  nodeEdges?: ImportNodeEdgesMapping;
   edgeFrom?: string;
   edgeTo?: string;
   edgeType?: string;
+}
+
+type ImportTextMapping = string | ImportFoldMapping;
+
+interface ImportFoldMapping {
+  concat: string[];
+  separator?: string;
+  preamble?: Record<string, string>;
+}
+
+interface ImportNodeEdgesMapping {
+  path: string;
+  edgeDirection: "deps-block-this-node" | "this-node-blocks-deps";
+  edgeType?: EdgeType;
+}
+
+interface ImportReport {
+  ok: boolean;
+  dryRun: boolean;
+  nodesFound: number;
+  edgesFound: number;
+  importedNodes: number;
+  importedEdges: number;
+  defaults: Array<{ nodeId: string; field: string; value: string | number; reason: string }>;
+  droppedFields: Array<{ nodeId: string; fields: string[] }>;
+  warnings: string[];
+  errors: string[];
+  nodes: AddNodeInput[];
+  edges: PlannedImportEdge[];
+}
+
+interface PlannedImportNode {
+  sourceId: string;
+  raw: unknown;
+  input: AddNodeInput;
+}
+
+interface PlannedImportEdge {
+  from: string;
+  to: string;
+  type: EdgeType;
+  source: string;
 }
 
 const defaultImportMapping: ImportMapping = {
@@ -804,6 +942,304 @@ const defaultImportMapping: ImportMapping = {
   edgeTo: "to_node",
   edgeType: "type",
 };
+
+const NODE_KINDS = ["feature", "fix", "refactor", "test", "docs", "infra", "audit-fix"] as const;
+const NODE_STATUSES = [
+  "draft",
+  "ready",
+  "claimed",
+  "working",
+  "review",
+  "fixing",
+  "ci",
+  "mergeable",
+  "done",
+  "regressed",
+  "blocked",
+  "cancelled",
+] as const;
+const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
+const RISKS = ["low", "medium", "high"] as const;
+const EDGE_TYPES = ["requires", "unblocks", "supersedes", "related"] as const;
+
+function mapImportNode(
+  raw: unknown,
+  index: number,
+  mapping: ImportMapping,
+  report: ImportReport,
+  verbose: boolean,
+): PlannedImportNode {
+  const id = stringAt(raw, mapping.id ?? "id");
+  if (!id) throw new Error(`nodes[${index}] is missing required id field (${mapping.id ?? "id"})`);
+  const title = stringAt(raw, mapping.title ?? "title") ?? id;
+  if (title === id && !stringAt(raw, mapping.title ?? "title")) {
+    defaultImportValue(report, id, "title", id, `missing ${mapping.title ?? "title"}`);
+  }
+  const spec = textAt(raw, mapping.spec ?? "spec", `nodes[${index}].spec`);
+  if (!spec) throw new Error(`node ${id}: mapped spec is required`);
+  const acceptance = textAt(raw, mapping.acceptance ?? "acceptance", `nodes[${index}].acceptance`);
+  if (!acceptance) throw new Error(`node ${id}: mapped acceptance is required`);
+
+  const input: AddNodeInput = {
+    id,
+    title,
+    kind: mappedEnum(raw, mapping.kind ?? "kind", isNodeKind, "kind", "feature", id, report),
+    milestone: stringAt(raw, mapping.milestone ?? "milestone"),
+    groupName: stringAt(raw, mapping.group ?? "group"),
+    projects: strictStringArrayAt(raw, mapping.projects ?? "projects", `node ${id}.projects`),
+    status: mappedStatus(raw, mapping, id, report),
+    priority: mappedEnum(
+      raw,
+      mapping.priority ?? "priority",
+      isPriority,
+      "priority",
+      "P2",
+      id,
+      report,
+    ),
+    estimatePoints: mappedEstimate(raw, mapping.estimate ?? "estimate", id, report),
+    risk: mappedEnum(raw, mapping.risk ?? "risk", isRisk, "risk", "medium", id, report),
+    spec,
+    acceptance,
+    validation: stringAt(raw, mapping.validation ?? "validation"),
+    verification: strictVerificationArrayAt(
+      raw,
+      mapping.verification ?? "verification",
+      `node ${id}.verification`,
+    ),
+    auditFocus: strictStringArrayAt(
+      raw,
+      mapping.auditFocus ?? "auditFocus",
+      `node ${id}.auditFocus`,
+    ),
+    context: stringAt(raw, mapping.context ?? "context"),
+    statusReason: stringAt(raw, mapping.statusReason ?? "statusReason"),
+  };
+  if (verbose)
+    importVerbose(
+      `node ${id}: status=${input.status} priority=${input.priority} risk=${input.risk}`,
+    );
+  return { sourceId: id, raw, input };
+}
+
+function mappedStatus(
+  raw: unknown,
+  mapping: ImportMapping,
+  nodeId: string,
+  report: ImportReport,
+): NodeStatus {
+  const sourceStatus = stringAt(raw, mapping.status ?? "status");
+  if (!sourceStatus) {
+    defaultImportValue(report, nodeId, "status", "ready", `missing ${mapping.status ?? "status"}`);
+    return "ready";
+  }
+  const mapped = mapping.statusMap?.[sourceStatus];
+  if (mapped) {
+    if (!isNodeStatus(mapped))
+      throw new Error(`statusMap.${sourceStatus} must be one of ${NODE_STATUSES.join(", ")}`);
+    return mapped;
+  }
+  if (isNodeStatus(sourceStatus)) return sourceStatus;
+  throw new Error(
+    `node ${nodeId}: unknown status "${sourceStatus}"; add statusMap.${sourceStatus} to the import mapping`,
+  );
+}
+
+function mappedEnum<T extends string>(
+  raw: unknown,
+  pathText: string,
+  isValue: (value: string) => value is T,
+  field: string,
+  fallback: T,
+  nodeId: string,
+  report: ImportReport,
+): T {
+  const value = stringAt(raw, pathText);
+  if (!value) {
+    defaultImportValue(report, nodeId, field, fallback, `missing ${pathText}`);
+    return fallback;
+  }
+  if (!isValue(value)) throw new Error(`node ${nodeId}: ${field} "${value}" is not valid`);
+  return value;
+}
+
+function mappedEstimate(
+  raw: unknown,
+  pathText: string,
+  nodeId: string,
+  report: ImportReport,
+): number {
+  const value = valueAtPath(raw, pathText);
+  if (value === undefined) {
+    defaultImportValue(report, nodeId, "estimate_points", 1, `missing ${pathText}`);
+    return 1;
+  }
+  const parsed = numberAt(raw, pathText);
+  if (parsed === undefined || !Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`node ${nodeId}: estimate at ${pathText} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function textAt(source: unknown, mapping: ImportTextMapping, label: string): string | undefined {
+  if (typeof mapping === "string") {
+    const value = valueAtPath(source, mapping);
+    if (value === undefined) return undefined;
+    if (typeof value !== "string")
+      throw new Error(`${label}: ${mapping} must be a string or use a fold descriptor`);
+    return value.trim() ? value : undefined;
+  }
+  if (!Array.isArray(mapping.concat) || mapping.concat.length === 0) {
+    throw new Error(`${label}: fold descriptor requires a non-empty concat array`);
+  }
+  const parts: string[] = [];
+  for (const pathText of mapping.concat) {
+    const value = valueAtPath(source, pathText);
+    if (value === undefined) continue;
+    const preamble = mapping.preamble?.[pathText] ?? "";
+    if (typeof value === "string") {
+      if (value.trim()) parts.push(`${preamble}${value}`);
+      continue;
+    }
+    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+      const items = value.filter((item) => item.trim());
+      if (items.length > 0) parts.push(`${preamble}${items.join(mapping.separator ?? "\n")}`);
+      continue;
+    }
+    throw new Error(`${label}: ${pathText} must be a string or string array`);
+  }
+  const text = parts.join("");
+  return text.trim() ? text : undefined;
+}
+
+function planImportEdge(
+  edge: PlannedImportEdge,
+  planned: PlannedImportEdge[],
+  report: ImportReport,
+  seen: Set<string>,
+): void {
+  if (edge.from === edge.to) {
+    report.errors.push(`edge ${edge.from} -> ${edge.to} from ${edge.source} points to itself`);
+    return;
+  }
+  const key = `${edge.from}\0${edge.to}\0${edge.type}`;
+  if (seen.has(key)) {
+    report.warnings.push(
+      `duplicate edge skipped: ${edge.from} -> ${edge.to} (${edge.type}) from ${edge.source}`,
+    );
+    return;
+  }
+  seen.add(key);
+  planned.push(edge);
+  report.edges.push(edge);
+}
+
+function validateNodeEdgesMapping(mapping: ImportNodeEdgesMapping): void {
+  if (!mapping.path) throw new Error("nodeEdges.path is required");
+  if (
+    mapping.edgeDirection !== "deps-block-this-node" &&
+    mapping.edgeDirection !== "this-node-blocks-deps"
+  ) {
+    throw new Error(
+      "nodeEdges.edgeDirection must be deps-block-this-node or this-node-blocks-deps",
+    );
+  }
+}
+
+function defaultImportValue(
+  report: ImportReport,
+  nodeId: string,
+  field: string,
+  value: string | number,
+  reason: string,
+): void {
+  report.defaults.push({ nodeId, field, value, reason });
+}
+
+function importVerbose(message: string): void {
+  console.error(`[qd import] ${message}`);
+}
+
+function usedNodeMappingKeys(mapping: ImportMapping): Set<string> {
+  const keys = new Set<string>();
+  for (const value of [
+    mapping.id ?? "id",
+    mapping.title ?? "title",
+    mapping.kind ?? "kind",
+    mapping.milestone ?? "milestone",
+    mapping.group ?? "group",
+    mapping.projects ?? "projects",
+    mapping.status ?? "status",
+    mapping.priority ?? "priority",
+    mapping.estimate ?? "estimate",
+    mapping.risk ?? "risk",
+    mapping.validation ?? "validation",
+    mapping.verification ?? "verification",
+    mapping.auditFocus ?? "auditFocus",
+    mapping.context ?? "context",
+    mapping.statusReason ?? "statusReason",
+  ]) {
+    keys.add(topLevelKey(value));
+  }
+  addTextMappingKeys(keys, mapping.spec ?? "spec");
+  addTextMappingKeys(keys, mapping.acceptance ?? "acceptance");
+  if (mapping.nodeEdges) keys.add(topLevelKey(mapping.nodeEdges.path));
+  return keys;
+}
+
+function addTextMappingKeys(keys: Set<string>, mapping: ImportTextMapping): void {
+  if (typeof mapping === "string") {
+    keys.add(topLevelKey(mapping));
+    return;
+  }
+  for (const pathText of mapping.concat) keys.add(topLevelKey(pathText));
+}
+
+function topLevelKey(pathText: string): string {
+  return pathText.split(".")[0] ?? pathText;
+}
+
+function droppedTopLevelKeys(source: unknown, used: Set<string>): string[] {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return [];
+  return Object.keys(source as Record<string, unknown>)
+    .filter((key) => !used.has(key))
+    .sort();
+}
+
+function findImportCycle(edges: Array<Pick<PlannedImportEdge, "from" | "to">>): string[] | null {
+  const graph = new Map<string, string[]>();
+  for (const edge of edges) {
+    graph.set(edge.from, [...(graph.get(edge.from) ?? []), edge.to]);
+    if (!graph.has(edge.to)) graph.set(edge.to, []);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [];
+
+  function visit(node: string): string[] | null {
+    if (visiting.has(node)) {
+      const start = stack.indexOf(node);
+      return [...stack.slice(start), node];
+    }
+    if (visited.has(node)) return null;
+    visiting.add(node);
+    stack.push(node);
+    for (const child of graph.get(node) ?? []) {
+      const cycle = visit(child);
+      if (cycle) return cycle;
+    }
+    stack.pop();
+    visiting.delete(node);
+    visited.add(node);
+    return null;
+  }
+
+  for (const node of graph.keys()) {
+    const cycle = visit(node);
+    if (cycle) return cycle;
+  }
+  return null;
+}
 
 async function importFindingsFromReport(
   root: string,
@@ -985,16 +1421,69 @@ function requiredNumber(value: string | string[] | boolean | undefined, name: st
   return parsed;
 }
 
-function enumOpt<T extends string>(value: string | string[] | boolean | undefined): T | undefined {
-  return stringOpt(value) as T | undefined;
+function strictEnumOpt<T extends string>(
+  value: string | string[] | boolean | undefined,
+  isValue: (candidate: string) => candidate is T,
+  label: string,
+  fallback: T,
+): T;
+function strictEnumOpt<T extends string>(
+  value: string | string[] | boolean | undefined,
+  isValue: (candidate: string) => candidate is T,
+  label: string,
+): T | undefined;
+function strictEnumOpt<T extends string>(
+  value: string | string[] | boolean | undefined,
+  isValue: (candidate: string) => candidate is T,
+  label: string,
+  fallback?: T,
+): T | undefined {
+  const text = stringOpt(value);
+  if (!text) return fallback;
+  if (!isValue(text))
+    throw new Error(`${label} must be one of ${validValuesFor(isValue).join(", ")}`);
+  return text;
 }
 
-function enumString<T extends string>(value: string | undefined): T | undefined {
-  return value as T | undefined;
+function strictOptionalEnum<T extends string>(
+  value: string | undefined,
+  isValue: (candidate: string) => candidate is T,
+  label: string,
+  fallback: T,
+): T {
+  if (!value) return fallback;
+  if (!isValue(value))
+    throw new Error(`${label} must be one of ${validValuesFor(isValue).join(", ")}`);
+  return value;
+}
+
+function validValuesFor(isValue: (candidate: string) => boolean): readonly string[] {
+  if (isValue === isNodeKind) return NODE_KINDS;
+  if (isValue === isNodeStatus) return NODE_STATUSES;
+  if (isValue === isPriority) return PRIORITIES;
+  if (isValue === isRisk) return RISKS;
+  if (isValue === isEdgeType) return EDGE_TYPES;
+  return [];
 }
 
 function isPriority(value: string): value is Priority {
-  return value === "P0" || value === "P1" || value === "P2" || value === "P3";
+  return (PRIORITIES as readonly string[]).includes(value);
+}
+
+function isNodeKind(value: string): value is NodeKind {
+  return (NODE_KINDS as readonly string[]).includes(value);
+}
+
+function isNodeStatus(value: string): value is NodeStatus {
+  return (NODE_STATUSES as readonly string[]).includes(value);
+}
+
+function isRisk(value: string): value is Risk {
+  return (RISKS as readonly string[]).includes(value);
+}
+
+function isEdgeType(value: string): value is EdgeType {
+  return (EDGE_TYPES as readonly string[]).includes(value);
 }
 
 function parseVerification(value: string): VerificationEntry {
@@ -1010,6 +1499,16 @@ function parseVerification(value: string): VerificationEntry {
     throw new Error(`Unknown verification type: ${type}`);
   }
   return { type, value: entryValue };
+}
+
+function strictArrayAtPath(source: unknown, pathText: string, requiredPath: boolean): unknown[] {
+  const value = valueAtPath(source, pathText);
+  if (value === undefined) {
+    if (requiredPath) throw new Error(`Expected ${pathText} to be an array`);
+    return [];
+  }
+  if (!Array.isArray(value)) throw new Error(`Expected ${pathText} to be an array`);
+  return value;
 }
 
 function arrayAtPath(source: unknown, pathText: string): unknown[] {
@@ -1032,25 +1531,34 @@ function numberAt(source: unknown, pathText: string): number | undefined {
   return undefined;
 }
 
-function stringArrayAt(source: unknown, pathText: string): string[] {
+function strictStringArrayAt(source: unknown, pathText: string, label: string): string[] {
   const value = valueAtPath(source, pathText);
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-  if (typeof value === "string" && value.trim()) return [value];
-  return [];
+  if (value === undefined || value === null) return [];
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (!Array.isArray(value)) throw new Error(`${label} at ${pathText} must be a string array`);
+  const invalidIndex = value.findIndex((item) => typeof item !== "string");
+  if (invalidIndex !== -1)
+    throw new Error(`${label} at ${pathText}[${invalidIndex}] must be a string`);
+  return value.filter((item) => item.trim());
 }
 
-function verificationArrayAt(source: unknown, pathText: string): VerificationEntry[] {
+function strictVerificationArrayAt(
+  source: unknown,
+  pathText: string,
+  label: string,
+): VerificationEntry[] {
   const value = valueAtPath(source, pathText);
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): VerificationEntry[] => {
-    if (typeof item === "string") return [parseVerification(item)];
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error(`${label} at ${pathText} must be an array`);
+  return value.map((item, index): VerificationEntry => {
+    if (typeof item === "string") return parseVerification(item);
     if (item && typeof item === "object") {
       const type = stringAt(item, "type") ?? "manual";
       const entryValue = stringAt(item, "value");
-      if (!entryValue) return [];
-      return [parseVerification(`type=${type},value=${entryValue}`)];
+      if (!entryValue) throw new Error(`${label}[${index}].value is required`);
+      return parseVerification(`type=${type},value=${entryValue}`);
     }
-    return [];
+    throw new Error(`${label}[${index}] must be a string or object`);
   });
 }
 
@@ -1107,7 +1615,7 @@ Core:
   qd config show
   qd config get ci-command
   qd config set check-command --value "<fast project check command>"
-  qd import --from roadmap/spec-dag.json --schema-mapping qd-import-map.json
+  qd import --from roadmap/spec-dag.json --schema-mapping qd-import-map.json [--dry-run] [--verbose]
 
 Graph:
   qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"]

@@ -83,54 +83,103 @@ export async function readConfig(root = process.cwd()): Promise<QdConfig> {
   let content = "";
   try {
     content = await readFile(paths.configPath, "utf8");
-  } catch {
-    return defaultConfig;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return defaultConfig;
+    }
+    throw error;
   }
-  return parseConfig(content);
+  try {
+    return parseConfig(content);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${paths.configPath}: ${message}`);
+  }
+}
+
+export function parseConfig(content: string): QdConfig {
+  const values: Record<string, string | boolean | number | string[]> = {};
+  const allowedKeys = new Set([
+    "schema_version",
+    "skills_dir",
+    "check_command",
+    "ci_command",
+    "merge_strategy",
+    "require_clean_worktree",
+    "clean_worktree_except",
+    "require_gate_before_ci",
+    "require_ci_before_merge",
+  ]);
+  for (const [index, rawLine] of content.split(/\r?\n/).entries()) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const match = /^([a-zA-Z0-9_]+)\s*=\s*(.+)$/.exec(line);
+    if (!match) throw new Error(`line ${index + 1} is not a supported key = value assignment`);
+    const key = match[1];
+    const rawValue = match[2];
+    if (!key || !rawValue) throw new Error(`line ${index + 1} is missing a key or value`);
+    if (!allowedKeys.has(key)) throw new Error(`unknown config key: ${key}`);
+    values[key] = parseTomlValue(rawValue.trim());
+  }
+
+  return {
+    schemaVersion: requiredNumberValue(values, "schema_version"),
+    skillsDir: requiredStringValue(values, "skills_dir"),
+    checkCommand: requiredStringValue(values, "check_command", true),
+    ciCommand: requiredStringValue(values, "ci_command", true),
+    mergeStrategy: requiredMergeStrategyValue(values, "merge_strategy"),
+    requireCleanWorktree: requiredBooleanValue(values, "require_clean_worktree"),
+    cleanWorktreeExcept: requiredStringArrayValue(values, "clean_worktree_except"),
+    requireGateBeforeCi: requiredBooleanValue(values, "require_gate_before_ci"),
+    requireCiBeforeMerge: requiredBooleanValue(values, "require_ci_before_merge"),
+  };
+}
+
+function requiredStringValue(
+  values: Record<string, unknown>,
+  key: string,
+  allowEmpty = false,
+): string {
+  const value = values[key];
+  if (typeof value !== "string") throw new Error(`${key} must be a string`);
+  if (!allowEmpty && !value.trim()) throw new Error(`${key} must not be empty`);
+  return value;
+}
+
+function requiredBooleanValue(values: Record<string, unknown>, key: string): boolean {
+  const value = values[key];
+  if (typeof value !== "boolean") throw new Error(`${key} must be true or false`);
+  return value;
+}
+
+function requiredStringArrayValue(values: Record<string, unknown>, key: string): string[] {
+  const value = values[key];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    throw new Error(`${key} must be an array of strings`);
+  }
+  return value;
+}
+
+function requiredNumberValue(values: Record<string, unknown>, key: string): number {
+  const value = values[key];
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new Error(`${key} must be a number`);
+  return value;
+}
+
+function requiredMergeStrategyValue(
+  values: Record<string, unknown>,
+  key: string,
+): QdConfig["mergeStrategy"] {
+  const value = values[key];
+  if (value === "squash" || value === "merge" || value === "rebase") return value;
+  throw new Error(`${key} must be squash, merge, or rebase`);
 }
 
 export async function writeConfig(root: string, config: QdConfig): Promise<void> {
   const paths = getProjectPaths(root);
   await mkdir(paths.qdDir, { recursive: true });
   await writeFile(paths.configPath, formatConfig(config), "utf8");
-}
-
-export function parseConfig(content: string): QdConfig {
-  const values: Record<string, string | boolean | number | string[]> = {};
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const match = /^([a-zA-Z0-9_]+)\s*=\s*(.+)$/.exec(line);
-    if (!match) continue;
-    const key = match[1];
-    const rawValue = match[2];
-    if (!key || !rawValue) continue;
-    values[key] = parseTomlValue(rawValue.trim());
-  }
-
-  return {
-    schemaVersion: numberValue(values.schema_version, defaultConfig.schemaVersion),
-    skillsDir: stringValue(values.skills_dir, defaultConfig.skillsDir),
-    checkCommand: stringValue(values.check_command, defaultConfig.checkCommand),
-    ciCommand: stringValue(values.ci_command, defaultConfig.ciCommand),
-    mergeStrategy: mergeStrategyValue(values.merge_strategy, defaultConfig.mergeStrategy),
-    requireCleanWorktree: booleanValue(
-      values.require_clean_worktree,
-      defaultConfig.requireCleanWorktree,
-    ),
-    cleanWorktreeExcept: stringArrayValue(
-      values.clean_worktree_except,
-      defaultConfig.cleanWorktreeExcept,
-    ),
-    requireGateBeforeCi: booleanValue(
-      values.require_gate_before_ci,
-      defaultConfig.requireGateBeforeCi,
-    ),
-    requireCiBeforeMerge: booleanValue(
-      values.require_ci_before_merge,
-      defaultConfig.requireCiBeforeMerge,
-    ),
-  };
 }
 
 export function formatConfig(config: QdConfig): string {
@@ -230,29 +279,6 @@ function parseTomlValue(value: string): string | boolean | number | string[] {
       .map((item) => (item.startsWith('"') && item.endsWith('"') ? item.slice(1, -1) : item));
   }
   return value;
-}
-
-function stringValue(value: unknown, fallback: string): string {
-  return typeof value === "string" && value.trim() ? value : fallback;
-}
-
-function booleanValue(value: unknown, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function stringArrayValue(value: unknown, fallback: string[]): string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : fallback;
-}
-
-function numberValue(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function mergeStrategyValue(
-  value: unknown,
-  fallback: QdConfig["mergeStrategy"],
-): QdConfig["mergeStrategy"] {
-  return value === "squash" || value === "merge" || value === "rebase" ? value : fallback;
 }
 
 function escapeTomlString(value: string): string {

@@ -87,9 +87,12 @@ Change these only when the repository genuinely needs a different operating mode
 For mature projects, import existing DAG state instead of recreating it manually:
 
 \`\`\`sh
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 qd validate
 \`\`\`
+
+When importing, review every dry-run error, default, warning, and dropped field. Unknown source statuses must be mapped with \`statusMap\`; qd should not turn unfamiliar lifecycle states into ready work by accident.
 
 Register strict metadata before import when the project relies on it:
 

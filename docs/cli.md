@@ -9,7 +9,7 @@
 - `qd stats [--json] [--window 7] [--milestone <name>]`
 - `qd ready [--json]`
 - `qd graph --format table|json|mermaid|dot`
-- `qd import --from <json> [--schema-mapping <json>]`
+- `qd import --from <json> [--schema-mapping <json>] [--dry-run] [--verbose]`
 - `qd velocity [--window 7]`
 - `qd critical-path [--milestone <name>]`
 - `qd eta [--window 7] [--milestone <name>]`
@@ -18,6 +18,27 @@
 - `qd config get <key>`
 - `qd config set check-command --value <command>`
 - `qd config set ci-command --value <command>`
+
+Config read/write round trip:
+
+```sh
+qd config set ci-command --value "<full project CI command>"
+qd config get ci-command
+```
+
+## Import
+
+Use `qd import` for existing DAGs:
+
+```sh
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --verbose
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
+```
+
+The import path is strict: unknown statuses require `statusMap`, malformed arrays fail, required fields must resolve, dependency arrays can create edges, and qd checks duplicate ids, missing edge endpoints, and `requires` cycles before writing.
+
+See [Importing An Existing DAG](./import.md) for the full `ImportMapping` schema.
 
 ## DAG
 

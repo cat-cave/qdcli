@@ -78,9 +78,12 @@ qd graph --format mermaid
 For existing projects, import the roadmap instead of manually adding hundreds of nodes:
 
 ```sh
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 qd validate
 ```
+
+Read `docs/import.md` in the qdcli repository before migrating an existing DAG. Treat import errors as graph problems to fix before orchestration. Review dry-run defaults, warnings, and dropped fields; do not assume a field was intentionally ignored unless the mapping makes that explicit.
 
 Use registered metadata when the project has real scheduling lanes, product areas, or strict milestone ordering:
 

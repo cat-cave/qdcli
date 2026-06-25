@@ -123,29 +123,55 @@ The printed page walks the agent through installing/checking the CLI, loading th
 For an existing project, do not create hundreds of nodes one at a time. Import the current roadmap JSON:
 
 ```sh
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 qd validate
 ```
 
-Mapping files are JSON. Each value is a dotted path in your source objects:
+Before importing, register any strict groups, projects, and milestones that your mapping will reference. Dry-run first and review errors, defaults, warnings, and dropped fields. qd will not silently map unknown statuses; use `statusMap` when migrating from another lifecycle.
+
+Mapping files are JSON. Simple fields are dotted paths in your source objects. `spec` and `acceptance` can also fold multiple string or string-array fields into one qd field:
 
 ```json
 {
   "nodesPath": "nodes",
-  "edgesPath": "edges",
   "id": "id",
   "title": "title",
-  "spec": "description",
-  "acceptance": "acceptanceCriteria",
+  "spec": {
+    "concat": ["summary", "deliverables"],
+    "separator": "\n- ",
+    "preamble": {
+      "deliverables": "\n\nDeliverables:\n- "
+    }
+  },
+  "acceptance": {
+    "concat": ["acceptanceCriteria"],
+    "separator": "\n- ",
+    "preamble": {
+      "acceptanceCriteria": "- "
+    }
+  },
   "group": "parallelGroup",
   "projects": "projects",
   "milestone": "target",
+  "status": "status",
+  "statusMap": {
+    "planned": "ready",
+    "in_progress": "working",
+    "complete": "done",
+    "cancelled": "cancelled",
+    "regressed": "regressed"
+  },
   "verification": "verification",
   "auditFocus": "auditFocus",
-  "edgeFrom": "from",
-  "edgeTo": "to"
+  "nodeEdges": {
+    "path": "dependsOn",
+    "edgeDirection": "deps-block-this-node"
+  }
 }
 ```
+
+See [Importing An Existing DAG](./import.md) for the full mapping schema.
 
 `qd graph --format json` emits the same shape qd imports by default, so export/import works for backup and re-tiering.
 

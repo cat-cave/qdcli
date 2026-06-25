@@ -43,9 +43,12 @@ qd eta
 For an existing roadmap, import instead of hand-entering nodes:
 
 ```sh
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 qd validate
 ```
+
+See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, dependency arrays, and dry-run review.
 
 `qd merge` records qd state only. It does not run git or GitHub merges; keep using the repo's normal merge workflow and use qd to enforce the DAG, audit, and green-CI gate.
 

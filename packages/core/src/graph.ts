@@ -278,7 +278,7 @@ export async function readyNodes(root: string): Promise<QdNode[]> {
     db,
     `select n.*
     from nodes n
-    where n.status in ('ready', 'blocked')
+    where n.status in ('ready', 'blocked', 'regressed')
       and not exists (
         select 1
         from edges e
@@ -885,12 +885,9 @@ function hydrateNode(row: NodeRow): QdNode {
 
 function parseJsonArray<T>(value: string | null | undefined): T[] {
   if (!value) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("Expected node metadata JSON to be an array");
+  return parsed as T[];
 }
 
 async function wouldCreateCycle(db: Database, fromNode: string, toNode: string): Promise<boolean> {
