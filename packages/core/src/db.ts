@@ -14,6 +14,28 @@ export interface ProjectPaths {
   logsDir: string;
 }
 
+export interface QdConfig {
+  schemaVersion: number;
+  skillsDir: string;
+  checkCommand: string;
+  ciCommand: string;
+  mergeStrategy: "squash" | "merge" | "rebase";
+  requireCleanWorktree: boolean;
+  requireGateBeforeCi: boolean;
+  requireCiBeforeMerge: boolean;
+}
+
+export const defaultConfig: QdConfig = {
+  schemaVersion: 1,
+  skillsDir: ".qd/skills",
+  checkCommand: "nix develop -c just ci",
+  ciCommand: "nix develop -c just ci",
+  mergeStrategy: "squash",
+  requireCleanWorktree: true,
+  requireGateBeforeCi: true,
+  requireCiBeforeMerge: true,
+};
+
 export function getProjectPaths(root = process.cwd()): ProjectPaths {
   const qdDir = path.join(root, ".qd");
   return {
@@ -32,7 +54,17 @@ export async function initProject(root = process.cwd()): Promise<ProjectPaths> {
   await mkdir(paths.logsDir, { recursive: true });
   await writeIfMissing(
     paths.configPath,
-    `# qdcli repo-local configuration\nschema_version = 1\nskills_dir = ".qd/skills"\n`,
+    `# qdcli repo-local configuration
+# qd expects one canonical command that means "this node is safe to merge".
+schema_version = 1
+skills_dir = ".qd/skills"
+check_command = "nix develop -c just ci"
+ci_command = "nix develop -c just ci"
+merge_strategy = "squash"
+require_clean_worktree = true
+require_gate_before_ci = true
+require_ci_before_merge = true
+`,
   );
   await writeIfMissing(
     paths.agentsPath,
@@ -41,6 +73,62 @@ export async function initProject(root = process.cwd()): Promise<ProjectPaths> {
   const db = await openDatabase(root);
   await applyMigrations(db);
   return paths;
+}
+
+export async function readConfig(root = process.cwd()): Promise<QdConfig> {
+  const paths = getProjectPaths(root);
+  let content = "";
+  try {
+    content = await readFile(paths.configPath, "utf8");
+  } catch {
+    return defaultConfig;
+  }
+  return parseConfig(content);
+}
+
+export async function writeConfig(root: string, config: QdConfig): Promise<void> {
+  const paths = getProjectPaths(root);
+  await mkdir(paths.qdDir, { recursive: true });
+  await writeFile(paths.configPath, formatConfig(config), "utf8");
+}
+
+export function parseConfig(content: string): QdConfig {
+  const values: Record<string, string | boolean | number> = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const match = /^([a-zA-Z0-9_]+)\s*=\s*(.+)$/.exec(line);
+    if (!match) continue;
+    const key = match[1];
+    const rawValue = match[2];
+    if (!key || !rawValue) continue;
+    values[key] = parseTomlValue(rawValue.trim());
+  }
+
+  return {
+    schemaVersion: numberValue(values.schema_version, defaultConfig.schemaVersion),
+    skillsDir: stringValue(values.skills_dir, defaultConfig.skillsDir),
+    checkCommand: stringValue(values.check_command, defaultConfig.checkCommand),
+    ciCommand: stringValue(values.ci_command, defaultConfig.ciCommand),
+    mergeStrategy: mergeStrategyValue(values.merge_strategy, defaultConfig.mergeStrategy),
+    requireCleanWorktree: booleanValue(values.require_clean_worktree, defaultConfig.requireCleanWorktree),
+    requireGateBeforeCi: booleanValue(values.require_gate_before_ci, defaultConfig.requireGateBeforeCi),
+    requireCiBeforeMerge: booleanValue(values.require_ci_before_merge, defaultConfig.requireCiBeforeMerge),
+  };
+}
+
+export function formatConfig(config: QdConfig): string {
+  return `# qdcli repo-local configuration
+# qd expects one canonical command that means "this node is safe to merge".
+schema_version = ${config.schemaVersion}
+skills_dir = "${config.skillsDir}"
+check_command = "${escapeTomlString(config.checkCommand)}"
+ci_command = "${escapeTomlString(config.ciCommand)}"
+merge_strategy = "${config.mergeStrategy}"
+require_clean_worktree = ${config.requireCleanWorktree}
+require_gate_before_ci = ${config.requireGateBeforeCi}
+require_ci_before_merge = ${config.requireCiBeforeMerge}
+`;
 }
 
 export async function openDatabase(root = process.cwd()): Promise<Database> {
@@ -103,4 +191,34 @@ async function writeIfMissing(filePath: string, content: string): Promise<void> 
   } catch {
     await writeFile(filePath, content, "utf8");
   }
+}
+
+function parseTomlValue(value: string): string | boolean | number {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+$/.test(value)) return Number(value);
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  return value;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function mergeStrategyValue(value: unknown, fallback: QdConfig["mergeStrategy"]): QdConfig["mergeStrategy"] {
+  return value === "squash" || value === "merge" || value === "rebase" ? value : fallback;
+}
+
+function escapeTomlString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }

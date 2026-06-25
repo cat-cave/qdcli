@@ -2,7 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addEdge, addFinding, addNode, gateNode, promoteFindings, readyNodes, resolveFinding, setupProject } from "./index.js";
+import {
+  addEdge,
+  addFinding,
+  addNode,
+  ciPass,
+  gateNode,
+  markMerged,
+  promoteFindings,
+  readyNodes,
+  resolveFinding,
+  setupProject,
+} from "./index.js";
 
 let root: string;
 
@@ -57,5 +68,14 @@ describe("graph lifecycle", () => {
     expect(promoted).toHaveLength(1);
     expect(promoted[0]?.kind).toBe("audit-fix");
   });
-});
 
+  it("requires a passed CI run before merge", async () => {
+    await addNode(root, { id: "a", title: "Build A", spec: "Do A", acceptance: "A works" });
+
+    await expect(markMerged(root, "a", "squash")).rejects.toThrow(/status ready/);
+    await ciPass(root, "a");
+    const merged = await markMerged(root, "a", "squash");
+
+    expect(merged.status).toBe("done");
+  });
+});

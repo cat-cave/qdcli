@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
@@ -10,6 +10,7 @@ import {
   ciPass,
   claimNode,
   completeNode,
+  getProjectPaths,
   gateNode,
   getNode,
   graphSnapshot,
@@ -18,6 +19,8 @@ import {
   listNodes,
   markMerged,
   promoteFindings,
+  readConfig,
+  recordCiResult,
   readyNodes,
   removeEdge,
   resolveFinding,
@@ -26,6 +29,8 @@ import {
   stats,
   updateNode,
   validateGraph,
+  writeConfig,
+  type QdConfig,
   type EdgeType,
   type NodeKind,
   type NodeStatus,
@@ -73,6 +78,8 @@ async function main(): Promise<void> {
       return graph(root, args.options, json);
     case "validate":
       return validation(root, json);
+    case "config":
+      return configCommand(root, action, extra, args.options, json);
     case "node":
       return nodeCommand(root, action, extra, args.options, json);
     case "edge":
@@ -100,6 +107,8 @@ async function main(): Promise<void> {
       return gate(root, requiredArg(action, "node id"), json);
     case "ci":
       return ciCommand(root, action, extra, args.options, json);
+    case "check":
+      return checkCommand(root, action, extra, args.options, json);
     case "merge":
       return output(await markMerged(root, requiredArg(action, "node id"), stringOpt(args.options.strategy) ?? "squash"), json);
     case "plan":
@@ -124,18 +133,45 @@ async function main(): Promise<void> {
 async function doctor(root: string, json: boolean): Promise<void> {
   await initProject(root);
   const validationResult = await validateGraph(root);
+  const config = await readConfig(root);
+  const configErrors: string[] = [];
+  if (!config.checkCommand.trim()) configErrors.push("check_command is empty");
+  if (!config.ciCommand.trim()) configErrors.push("ci_command is empty");
+  if (!["squash", "merge", "rebase"].includes(config.mergeStrategy)) {
+    configErrors.push("merge_strategy must be squash, merge, or rebase");
+  }
   const result = {
-    ok: validationResult.ok,
+    ok: validationResult.ok && configErrors.length === 0,
     checks: {
       initialized: true,
       schema: true,
       graph: validationResult.ok,
+      config: configErrors.length === 0,
     },
-    errors: validationResult.errors,
+    config,
+    errors: [...validationResult.errors, ...configErrors],
     warnings: validationResult.warnings,
   };
   output(result, json);
   if (!result.ok) process.exitCode = 1;
+}
+
+async function configCommand(
+  root: string,
+  action: string | undefined,
+  key: string | undefined,
+  options: Record<string, string | boolean>,
+  json: boolean,
+): Promise<void> {
+  const config = await readConfig(root);
+  if (action === "show" || !action) return output(config, json);
+  if (action === "set") {
+    const value = requiredArg(options.value ? stringOpt(options.value) : undefined, "--value");
+    const next = setConfigValue(config, requiredArg(key, "config key"), value);
+    await writeConfig(root, next);
+    return output(next, json);
+  }
+  throw new Error(`Unknown config action: ${action}`);
 }
 
 async function graph(root: string, options: Record<string, string | boolean>, json: boolean): Promise<void> {
@@ -268,12 +304,24 @@ async function ciCommand(
   options: Record<string, string | boolean>,
   json: boolean,
 ): Promise<void> {
+  if (action === "run") return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "ci", options, json);
   if (action === "start") {
     return output(await startRun(root, requiredArg(nodeId, "node id"), "ci", { summary: stringOpt(options.cmd) }), json);
   }
   if (action === "pass") return output(await ciPass(root, requiredArg(nodeId, "node id"), stringOpt(options.summary)), json);
   if (action === "fail") return output(await ciFail(root, requiredArg(nodeId, "node id"), stringOpt(options.summary)), json);
   throw new Error(`Unknown ci action: ${action}`);
+}
+
+async function checkCommand(
+  root: string,
+  action: string | undefined,
+  nodeId: string | undefined,
+  options: Record<string, string | boolean>,
+  json: boolean,
+): Promise<void> {
+  if (action === "run") return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "check", options, json);
+  throw new Error(`Unknown check action: ${action}`);
 }
 
 async function planCommand(
@@ -295,6 +343,91 @@ async function promptCommand(root: string, action: string | undefined, id: strin
     return;
   }
   console.log(promptText(action ?? "plan"));
+}
+
+async function runConfiguredCheck(
+  root: string,
+  nodeId: string,
+  kind: "check" | "ci",
+  options: Record<string, string | boolean>,
+  json: boolean,
+): Promise<void> {
+  const config = await readConfig(root);
+  if (config.requireGateBeforeCi) {
+    const gate = await gateNode(root, nodeId);
+    if (!gate.ok) {
+      output({ ok: false, blocking: gate.blocking }, json);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  if (config.requireCleanWorktree) await assertCleanWorktree(root);
+
+  const command = stringOpt(options.cmd) ?? (kind === "ci" ? config.ciCommand : config.checkCommand);
+  const paths = getProjectPaths(root);
+  await mkdir(paths.logsDir, { recursive: true });
+  const startedAt = new Date().toISOString();
+  const logPath = path.join(paths.logsDir, `${kind}-${nodeId}-${startedAt.replace(/[:.]/g, "-")}.log`);
+  const exitCode = await runShellCommand(command, root, logPath);
+  const finishedAt = new Date().toISOString();
+  const status = exitCode === 0 ? "passed" : "failed";
+  const node = await recordCiResult(root, nodeId, {
+    status,
+    summary: `${kind} command ${status}: ${command}`,
+    logPath,
+    startedAt,
+    finishedAt,
+  });
+  const result = { ok: exitCode === 0, exitCode, command, logPath, node };
+  output(result, json);
+  if (exitCode !== 0) process.exitCode = exitCode;
+}
+
+async function assertCleanWorktree(root: string): Promise<void> {
+  const result = await captureCommand("git", ["status", "--porcelain"], root);
+  if (result.code !== 0) throw new Error("require_clean_worktree is true, but git status failed");
+  const dirtyLines = result.stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((line) => !line.includes(".qd/"));
+  if (dirtyLines.length > 0) {
+    throw new Error(`Worktree must be clean before CI/check runs:\n${dirtyLines.join("\n")}`);
+  }
+}
+
+function runShellCommand(command: string, cwd: string, logPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, { cwd, shell: true, stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout.on("data", (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      void appendFile(logPath, chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      void appendFile(logPath, chunk);
+    });
+    child.on("error", reject);
+    child.on("exit", (code: number | null) => resolve(code ?? 1));
+  });
+}
+
+function captureCommand(command: string, args: string[], cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", reject);
+    child.on("exit", (code: number | null) =>
+      resolve({
+        code: code ?? 1,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+      }),
+    );
+  });
 }
 
 async function agentCommand(
@@ -377,6 +510,34 @@ function requiredArg(value: string | undefined, name: string): string {
   return value;
 }
 
+function setConfigValue(config: QdConfig, key: string, value: string): QdConfig {
+  if (key === "check_command" || key === "check-command") return { ...config, checkCommand: value };
+  if (key === "ci_command" || key === "ci-command") return { ...config, ciCommand: value };
+  if (key === "skills_dir" || key === "skills-dir") return { ...config, skillsDir: value };
+  if (key === "merge_strategy" || key === "merge-strategy") {
+    if (value !== "squash" && value !== "merge" && value !== "rebase") {
+      throw new Error("merge_strategy must be squash, merge, or rebase");
+    }
+    return { ...config, mergeStrategy: value };
+  }
+  if (key === "require_clean_worktree" || key === "require-clean-worktree") {
+    return { ...config, requireCleanWorktree: parseBoolean(value, key) };
+  }
+  if (key === "require_gate_before_ci" || key === "require-gate-before-ci") {
+    return { ...config, requireGateBeforeCi: parseBoolean(value, key) };
+  }
+  if (key === "require_ci_before_merge" || key === "require-ci-before-merge") {
+    return { ...config, requireCiBeforeMerge: parseBoolean(value, key) };
+  }
+  throw new Error(`Unknown config key: ${key}`);
+}
+
+function parseBoolean(value: string, key: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${key} must be true or false`);
+}
+
 function stringOpt(value: string | boolean | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -429,6 +590,8 @@ Core:
   qd status [--json]
   qd ready [--json]
   qd graph --format table|json|mermaid|dot
+  qd config show
+  qd config set check-command --value "nix develop -c just ci"
 
 Graph:
   qd node add --title <text> --spec <text> --acceptance <text> [--id <id>]
@@ -442,6 +605,8 @@ Audit:
   qd finding add <node> --severity P1 --title <text> --evidence <text>
   qd finding resolve <finding>
   qd gate <node>
+  qd check run <node>
+  qd ci run <node>
 
 Viewer:
   qd view [--port 5173]`;

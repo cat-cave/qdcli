@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { all, applyMigrations, get, initProject, openDatabase, run, type Database } from "./db.js";
+import { all, applyMigrations, get, initProject, openDatabase, readConfig, run, type Database } from "./db.js";
 import type {
   EdgeType,
   GraphSnapshot,
@@ -418,6 +418,29 @@ export async function ciPass(root: string, nodeId: string, summary = "CI passed"
   return getNode(root, nodeId);
 }
 
+export async function recordCiResult(
+  root: string,
+  nodeId: string,
+  input: { status: "passed" | "failed"; summary: string; logPath?: string | null; startedAt?: string; finishedAt?: string },
+): Promise<QdNode> {
+  const db = await openDatabase(root);
+  const now = new Date().toISOString();
+  const startedAt = input.startedAt ?? now;
+  const finishedAt = input.finishedAt ?? now;
+  await run(
+    db,
+    `insert into runs (id, node_id, kind, status, started_at, finished_at, summary, log_path)
+    values (?, ?, 'ci', ?, ?, ?, ?, ?)`,
+    [randomUUID(), nodeId, input.status, startedAt, finishedAt, input.summary, input.logPath ?? null],
+  );
+  await run(db, "update nodes set status = ?, updated_at = ? where id = ?", [
+    input.status === "passed" ? "mergeable" : "blocked",
+    finishedAt,
+    nodeId,
+  ]);
+  return getNode(root, nodeId);
+}
+
 export async function ciFail(root: string, nodeId: string, summary = "CI failed"): Promise<QdNode> {
   const db = await openDatabase(root);
   const now = new Date().toISOString();
@@ -433,8 +456,15 @@ export async function ciFail(root: string, nodeId: string, summary = "CI failed"
 }
 
 export async function markMerged(root: string, nodeId: string, strategy: string): Promise<QdNode> {
+  const config = await readConfig(root);
   const gate = await gateNode(root, nodeId);
   if (!gate.ok) throw new Error("Cannot merge while P0/P1 findings are open");
+  const node = await getNode(root, nodeId);
+  if (node.status !== "mergeable") throw new Error(`Cannot merge node with status ${node.status}; expected mergeable`);
+  if (config.requireCiBeforeMerge) {
+    const latestCi = await latestRun(root, nodeId, "ci");
+    if (!latestCi || latestCi.status !== "passed") throw new Error("Cannot merge without a latest passed CI run");
+  }
   const db = await openDatabase(root);
   const now = new Date().toISOString();
   await run(
@@ -444,6 +474,15 @@ export async function markMerged(root: string, nodeId: string, strategy: string)
   );
   await run(db, "update nodes set status = 'done', done_at = ?, updated_at = ? where id = ?", [now, now, nodeId]);
   return getNode(root, nodeId);
+}
+
+export async function latestRun(root: string, nodeId: string, kind: RunKind): Promise<QdRun | undefined> {
+  const db = await openDatabase(root);
+  return get<QdRun>(
+    db,
+    "select * from runs where node_id = ? and kind = ? order by started_at desc limit 1",
+    [nodeId, kind],
+  );
 }
 
 export async function graphSnapshot(root: string): Promise<GraphSnapshot> {

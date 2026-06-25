@@ -60,6 +60,15 @@ This should create:
 - `.qd/agents.md`
 - optional git hooks that warn when a claimed node is not linked to the current branch
 
+Configure the canonical green command:
+
+```sh
+qd config set check-command --value "nix develop -c just ci"
+qd config set ci-command --value "nix develop -c just ci"
+```
+
+Use the repository's real equivalent if it is not Nix. qd assumes this command is what makes a node safe to merge.
+
 ## 4. Verify it works
 
 ```sh

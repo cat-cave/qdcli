@@ -8,6 +8,9 @@
 - `qd status [--json]`
 - `qd ready [--json]`
 - `qd graph --format table|json|mermaid|dot`
+- `qd config show [--json]`
+- `qd config set check-command --value <command>`
+- `qd config set ci-command --value <command>`
 
 ## DAG
 
@@ -26,6 +29,8 @@
 - `qd finding resolve <finding>`
 - `qd promote-findings <node>`
 - `qd gate <node>`
+- `qd check run <node>`
+- `qd ci run <node>`
 
 ## Lifecycle
 
@@ -33,4 +38,3 @@
 - `qd ci pass <node>`
 - `qd ci fail <node>`
 - `qd merge <node> --strategy squash`
-
