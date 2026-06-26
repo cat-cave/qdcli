@@ -210,7 +210,27 @@ Prefer `qd export --out roadmap/spec-dag.json` for committed shared state. `qd g
 
 qd resolves the project root by checking `--root`, then `QD_ROOT`, then the nearest ancestor `.qd/` directory. This means agents can run `qd status`, `qd ready`, and node commands from subdirectories after setup.
 
-## 7. View the DAG
+## 7. Workspace Roll-Up
+
+For multiple repositories, keep each repo's qd DAG local to that repo. Use workspace commands only for read-only planning:
+
+```toml
+# ~/.config/qd/workspaces.toml
+repos = [
+  "/home/trevor/projects/app-a",
+  "/home/trevor/projects/app-b",
+]
+```
+
+```sh
+qd workspace status --json
+qd workspace ready --json
+qd workspace graph --json
+```
+
+Workspace roll-up does not claim nodes, write findings, run CI, or merge. The orchestrator still enters each repo and uses normal qd commands for work.
+
+## 8. View the DAG
 
 Start the Vite viewer:
 
