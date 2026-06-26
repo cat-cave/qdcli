@@ -11,6 +11,22 @@ curl -fsSL https://vite.plus | bash
 vp help
 ```
 
+On NixOS, nix-darwin, or Home Manager, install the packaged CLI directly:
+
+```sh
+nix profile install github:cat-cave/qdcli#qd
+```
+
+For Home Manager, add the flake package to `home.packages`:
+
+```nix
+inputs.qdcli.url = "github:cat-cave/qdcli";
+
+home.packages = [
+  inputs.qdcli.packages.${pkgs.system}.qd
+];
+```
+
 Current install from a clone:
 
 ```sh
@@ -19,7 +35,7 @@ vp run -r build
 vp pm --filter qdcli link --global
 ```
 
-On Nix, use the flake dev shell while trialing:
+When developing qd itself, use the flake dev shell:
 
 ```sh
 nix develop

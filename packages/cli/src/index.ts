@@ -63,13 +63,13 @@ async function main(): Promise<void> {
   const json = Boolean(args.options.json);
   const root = process.cwd();
 
-  if (!group || group === "help" || group === "--help" || group === "-h") {
-    console.log(helpText());
+  if (args.options.version || group === "version" || group === "--version" || group === "-v") {
+    console.log("0.1.0");
     return;
   }
 
-  if (group === "--version" || group === "-v") {
-    console.log("0.1.0");
+  if (!group || group === "help" || group === "--help" || group === "-h") {
+    console.log(helpText());
     return;
   }
 
