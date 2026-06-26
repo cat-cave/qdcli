@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
@@ -216,8 +216,10 @@ async function doctor(root: string, json: boolean): Promise<void> {
   const validationResult = await validateGraph(root);
   const config = await readConfig(root);
   const configErrors: string[] = [];
-  if (!config.checkCommand.trim()) configErrors.push("check_command is empty");
-  if (!config.ciCommand.trim()) configErrors.push("ci_command is empty");
+  const configWarnings: string[] = [];
+  const sourceCheckout = await isSourceCheckout();
+  if (!config.checkCommand.trim()) configWarnings.push("check_command is empty");
+  if (!config.ciCommand.trim()) configWarnings.push("ci_command is empty");
   if (!["squash", "merge", "rebase"].includes(config.mergeStrategy)) {
     configErrors.push("merge_strategy must be squash, merge, or rebase");
   }
@@ -229,9 +231,14 @@ async function doctor(root: string, json: boolean): Promise<void> {
       graph: validationResult.ok,
       config: configErrors.length === 0,
     },
+    runtime: {
+      sourceCheckout,
+      viewer: sourceCheckout ? "available" : "source-checkout-only",
+      skills: "embedded",
+    },
     config,
     errors: [...validationResult.errors, ...configErrors],
-    warnings: validationResult.warnings,
+    warnings: [...validationResult.warnings, ...configWarnings],
   };
   output(result, json);
   if (!result.ok) process.exitCode = 1;
@@ -1389,10 +1396,15 @@ async function importFindingsFromReport(
   return { nodeId, importedFindings: imported.length, findings: imported };
 }
 
-function viewCommand(
+async function viewCommand(
   root: string,
   options: Record<string, string | string[] | boolean>,
 ): Promise<void> {
+  if (!(await isSourceCheckout())) {
+    throw new Error(
+      "qd view requires a qdcli source checkout with apps/viewer. Installed CLI builds currently support DAG commands; run qd view from the qdcli repository.",
+    );
+  }
   const port = stringOpt(options.port) ?? "5173";
   const child = spawn(
     "corepack",
@@ -1409,6 +1421,26 @@ function viewCommand(
       code === 0 ? resolve() : reject(new Error(`viewer exited with code ${code}`)),
     );
   });
+}
+
+async function isSourceCheckout(): Promise<boolean> {
+  const workspaceRoot = findWorkspaceRoot();
+  return (
+    (await pathExists(path.join(workspaceRoot, "pnpm-workspace.yaml"))) &&
+    (await pathExists(path.join(workspaceRoot, "apps", "viewer")))
+  );
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function parseArgs(argv: string[]): ParsedArgs {

@@ -133,6 +133,8 @@ qd ready
 - graph has no cycles
 - every non-draft node has acceptance criteria
 
+An installed CLI may report `runtime.viewer = "source-checkout-only"`; that is expected unless you are running from the qdcli source checkout. Empty `check_command` or `ci_command` values are setup warnings. Configure them before starting real orchestration.
+
 ## 5. Hand off to an agent
 
 Give the orchestrator agent one operational instruction:

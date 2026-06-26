@@ -138,3 +138,9 @@ qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
 - `qd merge <node> --strategy squash`
 
 `qd merge` is a qd state transition, not a git operation and not a GitHub PR operation. It records a merge run and marks the node `done` only after qd confirms the node is mergeable, P0/P1 findings are closed, and the latest CI passed when `require_ci_before_merge = true`. Do the actual git merge, squash, rebase, or PR merge in your normal repo workflow before or around this command.
+
+## Installed CLI Notes
+
+`qd setup` and `qd agent install skills-sh` work from installed binaries because the qd DAG skill is embedded in the CLI.
+
+`qd doctor --json` reports `runtime.viewer = "source-checkout-only"` when the CLI is installed without the qdcli monorepo. That is not an error; DAG commands remain available. `qd view` currently requires running from the qdcli source checkout because the Vite viewer assets are not shipped as a static installed asset yet.
