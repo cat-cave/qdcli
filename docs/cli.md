@@ -18,6 +18,7 @@
 - `qd config get <key>`
 - `qd config set check-command --value <command>`
 - `qd config set ci-command --value <command>`
+- `qd workspace status|ready|graph [--json] [--config <toml>] [--repo <path>]`
 
 Config read/write round trip:
 
@@ -56,6 +57,35 @@ See [Importing An Existing DAG](./import.md) for the full `ImportMapping` schema
 - `qd edge add <from> <to> [--type requires]`
 - `qd claim [node] --agent <name>`
 - `qd complete <node> --summary <text>`
+
+## Workspace
+
+Workspace commands are read-only roll-ups across repo-local qd DAGs. They do not create nodes, claim work, record findings, or mutate another repository's DAG.
+
+Use a workspace config:
+
+```toml
+repos = [
+  "/home/trevor/projects/app-a",
+  "/home/trevor/projects/app-b",
+]
+```
+
+By default qd reads `$QD_WORKSPACE_CONFIG`, then `$XDG_CONFIG_HOME/qd/workspaces.toml`, then `~/.config/qd/workspaces.toml`.
+
+Commands:
+
+```sh
+qd workspace status --json
+qd workspace ready --json
+qd workspace graph --json
+```
+
+For scripts or one-off checks, pass repos directly:
+
+```sh
+qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
+```
 
 ## Audit
 

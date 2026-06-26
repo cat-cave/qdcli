@@ -175,7 +175,27 @@ See [Importing An Existing DAG](./import.md) for the full mapping schema.
 
 `qd graph --format json` emits the same shape qd imports by default, so export/import works for backup and re-tiering.
 
-## 7. View the DAG
+## 7. Workspace Roll-Up
+
+For multiple repositories, keep each repo's qd DAG local to that repo. Use workspace commands only for read-only planning:
+
+```toml
+# ~/.config/qd/workspaces.toml
+repos = [
+  "/home/trevor/projects/app-a",
+  "/home/trevor/projects/app-b",
+]
+```
+
+```sh
+qd workspace status --json
+qd workspace ready --json
+qd workspace graph --json
+```
+
+Workspace roll-up does not claim nodes, write findings, run CI, or merge. The orchestrator still enters each repo and uses normal qd commands for work.
+
+## 8. View the DAG
 
 Start the Vite viewer:
 

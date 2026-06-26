@@ -84,6 +84,8 @@ The default opinion is strict:
 
 Change these only when the repository genuinely needs a different operating model, and record why with \`qd node note <id> --text "..."\` or in project docs.
 
+For a multi-repo view, use \`qd workspace status --json\`, \`qd workspace ready --json\`, and \`qd workspace graph --json\` as read-only planning tools. Workspace roll-up is not a distributed executor; it helps the orchestrator choose where to focus, then normal qd commands run inside the target repo.
+
 For mature projects, import existing DAG state instead of recreating it manually:
 
 \`\`\`sh

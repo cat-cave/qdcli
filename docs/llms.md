@@ -62,6 +62,16 @@ qd ready --json
 
 If `qd doctor` reports config or graph errors, fix those before delegating work.
 
+For a multi-repo view, use workspace commands only for read-only planning:
+
+```sh
+qd workspace status --json
+qd workspace ready --json
+qd workspace graph --json
+```
+
+Workspace roll-up is not a distributed executor. It helps the orchestrator decide where attention is needed, then the orchestrator should enter the target repo and use normal qd commands there.
+
 ## Build The DAG
 
 Create nodes as executable specs, not vague todos. Each node should be independently mergeable and include concrete acceptance criteria.

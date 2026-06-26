@@ -40,6 +40,9 @@ import {
   updateNode,
   validateGraph,
   velocityReport,
+  workspaceGraph,
+  workspaceReady,
+  workspaceStatus,
   writeConfig,
   type QdConfig,
   type AddNodeInput,
@@ -190,6 +193,8 @@ async function main(): Promise<void> {
       return promptCommand(root, action, extra);
     case "agent":
       return agentCommand(root, action, extra, args.options, json);
+    case "workspace":
+      return workspaceCommand(action, args.options, json);
     case "view":
       return viewCommand(args.options);
     default:
@@ -243,6 +248,26 @@ async function configCommand(
     return output(next, json);
   }
   throw new Error(`Unknown config action: ${action}`);
+}
+
+async function workspaceCommand(
+  action: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const workspaceOptions = {
+    configPath: stringOpt(options.config),
+    repos: stringListOpt(options.repo),
+  };
+  if (action === "status" || !action) {
+    const result = await workspaceStatus(workspaceOptions);
+    output(result, json);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+  if (action === "ready") return output(await workspaceReady(workspaceOptions), json);
+  if (action === "graph") return output(await workspaceGraph(workspaceOptions), json);
+  throw new Error(`Unknown workspace action: ${action}`);
 }
 
 async function graph(
@@ -1616,6 +1641,7 @@ Core:
   qd config get ci-command
   qd config set check-command --value "<fast project check command>"
   qd import --from roadmap/spec-dag.json --schema-mapping qd-import-map.json [--dry-run] [--verbose]
+  qd workspace status|ready|graph [--json] [--config ~/.config/qd/workspaces.toml] [--repo <path>]
 
 Graph:
   qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"]
