@@ -70,20 +70,34 @@ function updateChangelog(fromVersion, toVersion) {
     commits.length > 0
       ? commits.map((line) => `- ${line}`).join("\n")
       : `- Release maintenance for v${toVersion}.`;
-  const header = previous.startsWith("# Changelog\n")
-    ? "# Changelog\n\n"
-    : "# Changelog\n\nAll notable qdcli changes are recorded here.\n\n";
-  const previousBody = previous.startsWith("# Changelog\n")
-    ? previous.replace(/^# Changelog\n\n?/, "")
-    : previous.trim();
+  const parsed = parseChangelog(previous);
   const entry = `## v${toVersion} - ${releaseDate}\n\n${body}\n`;
-  const trimmedPreviousBody = previousBody.trim();
-  const next =
-    trimmedPreviousBody.length > 0
-      ? `${header}${entry}\n${trimmedPreviousBody}\n`
-      : `${header}${entry}\n`;
+  const next = `${parsed.header}${entry}\n${parsed.releases}`.trimEnd() + "\n";
   writeFileSync(changelogPath, next, "utf8");
   console.log(`Updated CHANGELOG.md from ${fromVersion} to ${toVersion}`);
+}
+
+function parseChangelog(previous) {
+  if (!previous.trim()) {
+    return {
+      header: "# Changelog\n\nAll notable qdcli changes are recorded here.\n\n",
+      releases: "",
+    };
+  }
+  if (!previous.startsWith("# Changelog\n")) {
+    return {
+      header: "# Changelog\n\nAll notable qdcli changes are recorded here.\n\n",
+      releases: `${previous.trim()}\n`,
+    };
+  }
+  const firstRelease = previous.search(/^## /m);
+  if (firstRelease === -1) {
+    const header = previous.endsWith("\n\n") ? previous : `${previous.trimEnd()}\n\n`;
+    return { header, releases: "" };
+  }
+  const header = previous.slice(0, firstRelease).trimEnd() + "\n\n";
+  const releases = previous.slice(firstRelease).trim();
+  return { header, releases: releases ? `${releases}\n` : "" };
 }
 
 function latestTag() {

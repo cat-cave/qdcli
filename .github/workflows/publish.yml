@@ -21,6 +21,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - uses: cachix/install-nix-action@v31.10.6
+      - run: nix develop -c just install
       - run: nix develop -c just ci
       - run: nix develop -c just npm-smoke
       - run: mkdir -p dist-npm

@@ -2,6 +2,10 @@
 
 All notable qdcli changes are recorded here.
 
+## v0.1.2 - 2026-06-26
+
+- Fix the Trusted Publishing workflow so fresh GitHub runners install workspace dependencies before running CI and publishing.
+
 ## v0.1.1 - 2026-06-26
 
 - Add core Vitest coverage tracking and make coverage part of the CI gate.
