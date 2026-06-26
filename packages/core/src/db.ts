@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { connect } from "@tursodatabase/database";
 import { migrations } from "./schema.js";
@@ -38,6 +38,25 @@ export const defaultConfig: QdConfig = {
   requireCiBeforeMerge: true,
 };
 
+export async function resolveProjectRoot(
+  options: {
+    cwd?: string;
+    root?: string;
+  } = {},
+): Promise<string> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const explicitRoot = options.root ?? process.env.QD_ROOT;
+  if (explicitRoot) return path.resolve(cwd, explicitRoot);
+
+  let current = cwd;
+  while (true) {
+    if (await isDirectory(path.join(current, ".qd"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return cwd;
+    current = parent;
+  }
+}
+
 export function getProjectPaths(root = process.cwd()): ProjectPaths {
   const qdDir = path.join(root, ".qd");
   return {
@@ -48,6 +67,17 @@ export function getProjectPaths(root = process.cwd()): ProjectPaths {
     agentsPath: path.join(qdDir, "agents.md"),
     logsDir: path.join(qdDir, "logs"),
   };
+}
+
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    return (await stat(dirPath)).isDirectory();
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export async function initProject(root = process.cwd()): Promise<ProjectPaths> {

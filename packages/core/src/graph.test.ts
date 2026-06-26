@@ -1,13 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   addEdge,
   addFinding,
+  addNodeNote,
   addNode,
   ciPass,
   gateNode,
+  graphSnapshot,
   markMerged,
   promoteFindings,
   recordCheckResult,
@@ -15,8 +17,11 @@ import {
   registerGroup,
   registerMilestone,
   registerProject,
+  resolveProjectRoot,
+  restoreGraphSnapshot,
   resolveFinding,
   setupProject,
+  startRun,
 } from "./index.js";
 
 let root: string;
@@ -165,5 +170,59 @@ describe("graph lifecycle", () => {
     expect(node.group_name).toBe("runtime");
     expect(node.projects).toEqual(["app"]);
     expect(node.milestone).toBe("baseline");
+  });
+
+  it("restores a canonical graph snapshot into a fresh local cache", async () => {
+    await registerGroup(root, "runtime");
+    await registerProject(root, "app");
+    await registerMilestone(root, "baseline", 10);
+    await addNode(root, {
+      id: "a",
+      title: "Build A",
+      groupName: "runtime",
+      projects: ["app"],
+      milestone: "baseline",
+      spec: "Do A",
+      acceptance: "A works",
+    });
+    await addNode(root, {
+      id: "b",
+      title: "Build B",
+      spec: "Do B",
+      acceptance: "B works",
+    });
+    await addEdge(root, "a", "b");
+    await startRun(root, "a", "implement", { summary: "done" });
+    await addFinding(root, "a", {
+      severity: "P2",
+      title: "Improve validation",
+      evidence: "Validation can be stronger.",
+    });
+    await addNodeNote(root, "a", "Ready for audit");
+
+    const snapshot = await graphSnapshot(root);
+    const restoredRoot = await mkdtemp(path.join(os.tmpdir(), "qdcli-restore-"));
+    try {
+      await setupProject(restoredRoot);
+      await restoreGraphSnapshot(restoredRoot, snapshot);
+      const restored = await graphSnapshot(restoredRoot);
+
+      expect(restored.registries).toEqual(snapshot.registries);
+      expect(restored.nodes).toEqual(snapshot.nodes);
+      expect(restored.edges).toEqual(snapshot.edges);
+      expect(restored.runs).toEqual(snapshot.runs);
+      expect(restored.findings).toEqual(snapshot.findings);
+      expect(restored.node_notes).toEqual(snapshot.node_notes);
+    } finally {
+      await rm(restoredRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the nearest ancestor qd root", async () => {
+    const nested = path.join(root, "packages", "app", "src");
+    await mkdir(nested, { recursive: true });
+
+    await expect(resolveProjectRoot({ cwd: nested })).resolves.toBe(root);
+    await expect(resolveProjectRoot({ cwd: nested, root })).resolves.toBe(root);
   });
 });

@@ -27,6 +27,13 @@ describe("analytics", () => {
 
 function fixture(): GraphSnapshot {
   return {
+    schema_version: 1,
+    exported_at: "2026-06-25T00:00:00.000Z",
+    registries: {
+      groups: [],
+      projects: [],
+      milestones: [],
+    },
     nodes: [
       node("done", "Done", "done", 10, "2026-06-22T00:00:00.000Z"),
       node("a", "A", "ready", 2),
@@ -49,6 +56,7 @@ function fixture(): GraphSnapshot {
     ],
     findings: [],
     runs: [],
+    node_notes: [],
   };
 }
 

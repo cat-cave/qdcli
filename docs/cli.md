@@ -1,5 +1,12 @@
 # CLI Reference
 
+Global root selection:
+
+- `qd --root <repo> <command>`
+- `QD_ROOT=/path/to/repo qd <command>`
+
+If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor exists, it uses the current working directory.
+
 ## Core
 
 - `qd init`
@@ -9,6 +16,7 @@
 - `qd stats [--json] [--window 7] [--milestone <name>]`
 - `qd ready [--json]`
 - `qd graph --format table|json|mermaid|dot`
+- `qd export [--out <json>]`
 - `qd import --from <json> [--schema-mapping <json>] [--dry-run] [--verbose]`
 - `qd velocity [--window 7]`
 - `qd critical-path [--milestone <name>]`
@@ -28,6 +36,17 @@ qd config get ci-command
 ```
 
 ## Import
+
+Use `qd export` for qd-native shared state:
+
+```sh
+qd export --out roadmap/spec-dag.json
+qd import --from roadmap/spec-dag.json
+```
+
+The exported JSON is the committed source of truth for sharing qd state across machines. `.qd/qd.db` remains a local rebuildable cache and should stay gitignored.
+
+qd-native exports include registries, nodes, edges, findings, runs, and node notes. They import without a mapping file.
 
 Use `qd import` for existing DAGs:
 

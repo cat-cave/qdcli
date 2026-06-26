@@ -11,6 +11,22 @@ curl -fsSL https://vite.plus | bash
 vp help
 ```
 
+On NixOS, nix-darwin, or Home Manager, install the packaged CLI directly:
+
+```sh
+nix profile install github:cat-cave/qdcli#qd
+```
+
+For Home Manager, add the flake package to `home.packages`:
+
+```nix
+inputs.qdcli.url = "github:cat-cave/qdcli";
+
+home.packages = [
+  inputs.qdcli.packages.${pkgs.system}.qd
+];
+```
+
 Current install from a clone:
 
 ```sh
@@ -19,7 +35,7 @@ vp run -r build
 vp pm --filter qdcli link --global
 ```
 
-On Nix, use the flake dev shell while trialing:
+When developing qd itself, use the flake dev shell:
 
 ```sh
 nix develop
@@ -68,6 +84,21 @@ This creates:
 - `.qd/config.toml`
 - `.qd/agents.md`
 - `.qd/skills/qd-dag/SKILL.md`
+
+Treat `.qd/qd.db` as a local cache. Do not commit it. For shared state across machines, worktrees, or remote orchestrator hosts, commit a qd JSON export:
+
+```sh
+qd export --out roadmap/spec-dag.json
+```
+
+On another clone or machine, rebuild the local cache from the committed JSON:
+
+```sh
+qd setup --no-hooks
+qd import --from roadmap/spec-dag.json
+```
+
+`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd import` restores qd's canonical export format without a mapping file. Use `--schema-mapping` only when importing a non-qd source roadmap.
 
 Configure the local preflight command and the canonical green command:
 
@@ -174,6 +205,10 @@ Mapping files are JSON. Simple fields are dotted paths in your source objects. `
 See [Importing An Existing DAG](./import.md) for the full mapping schema.
 
 `qd graph --format json` emits the same shape qd imports by default, so export/import works for backup and re-tiering.
+
+Prefer `qd export --out roadmap/spec-dag.json` for committed shared state. `qd graph --format json` is still useful for read-only inspection.
+
+qd resolves the project root by checking `--root`, then `QD_ROOT`, then the nearest ancestor `.qd/` directory. This means agents can run `qd status`, `qd ready`, and node commands from subdirectories after setup.
 
 ## 7. Workspace Roll-Up
 
