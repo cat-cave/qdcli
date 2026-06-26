@@ -34,6 +34,15 @@ qd setup
 qd agent install skills-sh
 ```
 
+qd stores its working cache in `.qd/qd.db`, but that binary DB is local state. The portable source of truth is a committed JSON export:
+
+```sh
+qd export --out roadmap/spec-dag.json
+qd import --from roadmap/spec-dag.json
+```
+
+Use this export/import path when moving between machines, worktrees, or remote execution hosts. Do not ask the user to commit `.qd/qd.db`.
+
 Before creating work, configure the repository's real commands:
 
 ```sh
@@ -61,6 +70,18 @@ qd ready --json
 ```
 
 If `qd doctor` reports config or graph errors, fix those before delegating work.
+
+You may run qd from a subdirectory. qd resolves `--root`, then `QD_ROOT`, then the nearest ancestor `.qd/` directory.
+
+For a multi-repo view, use workspace commands only for read-only planning:
+
+```sh
+qd workspace status --json
+qd workspace ready --json
+qd workspace graph --json
+```
+
+Workspace roll-up is not a distributed executor. It helps the orchestrator decide where attention is needed, then the orchestrator should enter the target repo and use normal qd commands there.
 
 ## Build The DAG
 

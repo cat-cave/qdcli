@@ -4,6 +4,13 @@ Quick DAG is a thin CLI for orchestrator-led agentic project work. It stores a r
 
 qd does not run agents or decide where subagents execute. The intended model is one central orchestrator agent keeping the DAG accurate, selecting ready nodes, and delegating implementation or audit work to subagents in worktrees, remote machines, or whatever execution setup fits the project. qd stays simple: dependencies must be respected, specs must be completed, audits must happen, P0/P1 findings must be resolved, P2/P3 findings must enter the DAG, and CI must pass before merge.
 
+## Install
+
+```sh
+nix profile install github:cat-cave/qdcli#qd
+qd --version
+```
+
 ## Install For Development
 
 ```sh

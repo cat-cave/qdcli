@@ -84,6 +84,17 @@ The default opinion is strict:
 
 Change these only when the repository genuinely needs a different operating model, and record why with \`qd node note <id> --text "..."\` or in project docs.
 
+Treat \`.qd/qd.db\` as a local cache, not shared state. The portable source of truth is a committed qd export:
+
+\`\`\`sh
+qd export --out roadmap/spec-dag.json
+qd import --from roadmap/spec-dag.json
+\`\`\`
+
+Use that export/import path when moving between machines, worktrees, or remote execution hosts. qd resolves \`--root\`, then \`QD_ROOT\`, then the nearest ancestor \`.qd/\`, so commands can be run from subdirectories after setup.
+
+For a multi-repo view, use \`qd workspace status --json\`, \`qd workspace ready --json\`, and \`qd workspace graph --json\` as read-only planning tools. Workspace roll-up is not a distributed executor; it helps the orchestrator choose where to focus, then normal qd commands run inside the target repo.
+
 For mature projects, import existing DAG state instead of recreating it manually:
 
 \`\`\`sh

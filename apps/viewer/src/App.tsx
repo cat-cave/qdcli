@@ -15,7 +15,18 @@ function App() {
         setSnapshot(data);
         setSelected(data.nodes[0]?.id ?? null);
       })
-      .catch(() => setSnapshot({ nodes: [], edges: [], findings: [], runs: [] }));
+      .catch(() =>
+        setSnapshot({
+          schema_version: 1,
+          exported_at: new Date(0).toISOString(),
+          registries: { groups: [], projects: [], milestones: [] },
+          nodes: [],
+          edges: [],
+          findings: [],
+          runs: [],
+          node_notes: [],
+        }),
+      );
     fetch("/api/analytics")
       .then((response) => response.json())
       .then((data: AnalyticsReport) => setAnalytics(data))

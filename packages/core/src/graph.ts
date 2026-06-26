@@ -635,11 +635,202 @@ export async function latestRun(
 export async function graphSnapshot(root: string): Promise<GraphSnapshot> {
   const db = await openDatabase(root);
   return {
+    schema_version: 1,
+    exported_at: new Date().toISOString(),
+    registries: {
+      groups: await listRegistry(root, "groups"),
+      projects: await listRegistry(root, "projects"),
+      milestones: await listRegistry(root, "milestones"),
+    },
     nodes: (await all<NodeRow>(db, "select * from nodes order by created_at asc")).map(hydrateNode),
     edges: await all<QdEdge>(db, "select * from edges order by created_at asc"),
     findings: await all<QdFinding>(db, "select * from findings order by created_at asc"),
     runs: await all<QdRun>(db, "select * from runs order by started_at asc"),
+    node_notes: await all<NodeNote>(db, "select * from node_notes order by created_at asc"),
   };
+}
+
+export async function restoreGraphSnapshot(root: string, snapshot: GraphSnapshot): Promise<void> {
+  const db = await openDatabase(root);
+  await applyMigrations(db);
+  if (snapshot.schema_version !== 1) {
+    throw new Error(`Unsupported qd export schema_version: ${snapshot.schema_version}`);
+  }
+  const existingNode = await get<NodeRow>(db, "select * from nodes limit 1");
+  if (existingNode) {
+    throw new Error(
+      "qd import requires an empty qd DAG. Remove the local .qd/qd.db cache or import into a fresh qd setup.",
+    );
+  }
+  const nodeIds = new Set<string>();
+  for (const node of snapshot.nodes) {
+    if (nodeIds.has(node.id)) throw new Error(`duplicate node id in qd export: ${node.id}`);
+    nodeIds.add(node.id);
+  }
+  const edgeIds = new Set<string>();
+  for (const edge of snapshot.edges) {
+    const edgeId = `${edge.from_node}\0${edge.to_node}\0${edge.type}`;
+    if (edgeIds.has(edgeId)) {
+      throw new Error(
+        `duplicate edge in qd export: ${edge.from_node} -> ${edge.to_node} (${edge.type})`,
+      );
+    }
+    edgeIds.add(edgeId);
+    if (!nodeIds.has(edge.from_node)) {
+      throw new Error(`edge references missing from node: ${edge.from_node}`);
+    }
+    if (!nodeIds.has(edge.to_node)) {
+      throw new Error(`edge references missing to node: ${edge.to_node}`);
+    }
+  }
+  const cycle = findCycle(snapshot.edges.filter((edge) => edge.type === "requires"));
+  if (cycle) throw new Error(`requires edge cycle detected: ${cycle.join(" -> ")}`);
+  const runIds = new Set<string>();
+  for (const runEntry of snapshot.runs) {
+    if (runIds.has(runEntry.id)) throw new Error(`duplicate run id in qd export: ${runEntry.id}`);
+    runIds.add(runEntry.id);
+    if (!nodeIds.has(runEntry.node_id)) {
+      throw new Error(`run references missing node: ${runEntry.node_id}`);
+    }
+  }
+  for (const finding of snapshot.findings) {
+    if (!nodeIds.has(finding.node_id)) {
+      throw new Error(`finding references missing node: ${finding.node_id}`);
+    }
+    if (finding.run_id && !runIds.has(finding.run_id)) {
+      throw new Error(`finding references missing run: ${finding.run_id}`);
+    }
+  }
+  for (const note of snapshot.node_notes) {
+    if (!nodeIds.has(note.node_id))
+      throw new Error(`note references missing node: ${note.node_id}`);
+  }
+
+  for (const group of snapshot.registries.groups) {
+    await run(db, "insert or replace into groups (name, created_at) values (?, ?)", [
+      group.name,
+      group.created_at,
+    ]);
+  }
+  for (const project of snapshot.registries.projects) {
+    await run(db, "insert or replace into projects (name, created_at) values (?, ?)", [
+      project.name,
+      project.created_at,
+    ]);
+  }
+  for (const milestone of snapshot.registries.milestones) {
+    if (!Number.isInteger(milestone.rank)) {
+      throw new Error(`milestone ${milestone.name} is missing integer rank`);
+    }
+    await run(db, "insert or replace into milestones (name, rank, created_at) values (?, ?, ?)", [
+      milestone.name,
+      milestone.rank,
+      milestone.created_at,
+    ]);
+  }
+
+  for (const node of snapshot.nodes) {
+    assertNodeQuality(node);
+    await assertNodeRegistryValues(db, node);
+    await run(
+      db,
+      `insert into nodes (
+        id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
+        spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command,
+        created_at, updated_at, claimed_at, done_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        node.id,
+        node.title,
+        node.kind,
+        node.milestone,
+        node.group_name,
+        JSON.stringify(node.projects),
+        node.status,
+        node.priority,
+        node.estimate_points,
+        node.risk,
+        node.owner,
+        node.branch,
+        node.spec,
+        node.acceptance,
+        node.validation,
+        JSON.stringify(node.verification),
+        JSON.stringify(node.audit_focus),
+        node.context,
+        node.status_reason,
+        node.check_command,
+        node.created_at,
+        node.updated_at,
+        node.claimed_at,
+        node.done_at,
+      ],
+    );
+  }
+
+  for (const edge of snapshot.edges) {
+    await run(db, "insert into edges (from_node, to_node, type, created_at) values (?, ?, ?, ?)", [
+      edge.from_node,
+      edge.to_node,
+      edge.type,
+      edge.created_at,
+    ]);
+  }
+
+  for (const runEntry of snapshot.runs) {
+    await run(
+      db,
+      `insert into runs (
+        id, node_id, kind, status, worktree_path, agent, started_at, finished_at, summary, log_path
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        runEntry.id,
+        runEntry.node_id,
+        runEntry.kind,
+        runEntry.status,
+        runEntry.worktree_path,
+        runEntry.agent,
+        runEntry.started_at,
+        runEntry.finished_at,
+        runEntry.summary,
+        runEntry.log_path,
+      ],
+    );
+  }
+
+  for (const finding of snapshot.findings) {
+    await run(
+      db,
+      `insert into findings (
+        id, node_id, run_id, severity, status, title, path, line, evidence, expected,
+        suggested_fix, created_at, resolved_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        finding.id,
+        finding.node_id,
+        finding.run_id,
+        finding.severity,
+        finding.status,
+        finding.title,
+        finding.path,
+        finding.line,
+        finding.evidence,
+        finding.expected,
+        finding.suggested_fix,
+        finding.created_at,
+        finding.resolved_at,
+      ],
+    );
+  }
+
+  for (const note of snapshot.node_notes) {
+    await run(db, "insert into node_notes (id, node_id, text, created_at) values (?, ?, ?, ?)", [
+      note.id,
+      note.node_id,
+      note.text,
+      note.created_at,
+    ]);
+  }
 }
 
 export async function validateGraph(root: string): Promise<ValidationResult> {
