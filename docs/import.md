@@ -54,6 +54,30 @@ The import command is strict by design:
 
    Claim it, delegate it, audit it, resolve or promote findings, run CI, and record merge only after qd marks it mergeable.
 
+## Reference Adapters
+
+qd ships two small normalizers for common roadmap sources:
+
+```sh
+qd import --from docs/ROADMAP.html --adapter roadmap-html --dry-run --json
+qd import --from roadmap.md --adapter markdown-checklist --dry-run --json
+```
+
+`roadmap-html` looks for `<h3>` card titles, `.goal` text, `<li>` acceptance items, `.dep` dependency labels, and `.ph` phase/milestone labels. It maps card classes such as `done`, `active`, `ready`, and `blocked` to qd statuses.
+
+`markdown-checklist` reads `- [ ]` and `- [x]` items as nodes. Indented `depends on:` bullets become `requires` edges, and indented `acceptance:` bullets become acceptance criteria.
+
+For project-specific roadmap formats, prefer a project-local normalizer that emits qd's canonical JSON shape:
+
+```json
+{
+  "nodes": [
+    { "id": "runtime", "title": "Runtime", "status": "ready", "spec": "...", "acceptance": "..." }
+  ],
+  "edges": [{ "from_node": "runtime", "to_node": "agent", "type": "requires" }]
+}
+```
+
 ## ImportMapping Schema
 
 All path fields are dotted paths relative to each source object.
