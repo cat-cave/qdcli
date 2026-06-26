@@ -1,6 +1,19 @@
 # Schema
 
-qd stores local state in `.qd/qd.db`.
+qd stores local cache state in `.qd/qd.db`. Do not commit the binary DB.
+
+The portable, committed source of truth is the qd JSON export:
+
+```sh
+qd export --out roadmap/spec-dag.json
+```
+
+That export has `schema_version`, `exported_at`, `registries`, `nodes`, `edges`, `findings`, `runs`, and `node_notes`. A fresh clone can rebuild its local DB cache with:
+
+```sh
+qd setup --no-hooks
+qd import --from roadmap/spec-dag.json
+```
 
 ## Nodes
 

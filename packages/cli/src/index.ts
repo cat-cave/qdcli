@@ -34,6 +34,8 @@ import {
   recordCheckResult,
   removeEdge,
   resolveFinding,
+  resolveProjectRoot,
+  restoreGraphSnapshot,
   setupProject,
   startRun,
   stats,
@@ -44,6 +46,7 @@ import {
   type QdConfig,
   type AddNodeInput,
   type EdgeType,
+  type GraphSnapshot,
   type NodeKind,
   type NodeStatus,
   type Priority,
@@ -61,7 +64,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const [group, action, extra] = args.command;
   const json = Boolean(args.options.json);
-  const root = process.cwd();
+  const root = await resolveProjectRoot({ root: stringOpt(args.options.root) });
 
   if (!group || group === "help" || group === "--help" || group === "-h") {
     console.log(helpText());
@@ -106,6 +109,8 @@ async function main(): Promise<void> {
       return configCommand(root, action, extra, args.options, json);
     case "import":
       return importCommand(root, args.options, json);
+    case "export":
+      return exportCommand(root, args.options, json);
     case "group":
       return registryCommand(root, "groups", action, args.options, json);
     case "project":
@@ -191,7 +196,7 @@ async function main(): Promise<void> {
     case "agent":
       return agentCommand(root, action, extra, args.options, json);
     case "view":
-      return viewCommand(args.options);
+      return viewCommand(root, args.options);
     default:
       throw new Error(`Unknown command: ${group}`);
   }
@@ -262,6 +267,32 @@ async function graph(
     return;
   }
   output(snapshot.nodes, false);
+}
+
+async function exportCommand(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const snapshot = await graphSnapshot(root);
+  const outPath = stringOpt(options.out);
+  if (!outPath) return output(snapshot, true);
+
+  const resolvedOut = path.resolve(root, outPath);
+  await mkdir(path.dirname(resolvedOut), { recursive: true });
+  await writeFile(resolvedOut, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  return output(
+    {
+      ok: true,
+      path: path.relative(root, resolvedOut),
+      nodes: snapshot.nodes.length,
+      edges: snapshot.edges.length,
+      findings: snapshot.findings.length,
+      runs: snapshot.runs.length,
+      nodeNotes: snapshot.node_notes.length,
+    },
+    json,
+  );
 }
 
 async function validation(root: string, json: boolean): Promise<void> {
@@ -535,6 +566,26 @@ async function importCommand(
   const dryRun = Boolean(options["dry-run"]);
   const verbose = Boolean(options.verbose);
   const source = JSON.parse(await readFile(filePath, "utf8")) as unknown;
+  const canonicalSnapshot = canonicalSnapshotFrom(source);
+  if (canonicalSnapshot && !mappingPath) {
+    const report = {
+      ok: true,
+      dryRun,
+      format: "qd-export",
+      nodesFound: canonicalSnapshot.nodes.length,
+      edgesFound: canonicalSnapshot.edges.length,
+      findingsFound: canonicalSnapshot.findings.length,
+      runsFound: canonicalSnapshot.runs.length,
+      nodeNotesFound: canonicalSnapshot.node_notes.length,
+      importedNodes: dryRun ? 0 : canonicalSnapshot.nodes.length,
+      importedEdges: dryRun ? 0 : canonicalSnapshot.edges.length,
+      importedFindings: dryRun ? 0 : canonicalSnapshot.findings.length,
+      importedRuns: dryRun ? 0 : canonicalSnapshot.runs.length,
+      importedNodeNotes: dryRun ? 0 : canonicalSnapshot.node_notes.length,
+    };
+    if (!dryRun) await restoreGraphSnapshot(root, canonicalSnapshot);
+    return output(report, json);
+  }
   const mapping = mappingPath
     ? (JSON.parse(await readFile(path.resolve(root, mappingPath), "utf8")) as ImportMapping)
     : defaultImportMapping;
@@ -775,6 +826,7 @@ function runShellCommand(command: string, cwd: string, logPath: string): Promise
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
+      env: { ...process.env, QD_ROOT: cwd },
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -1276,14 +1328,17 @@ async function importFindingsFromReport(
   return { nodeId, importedFindings: imported.length, findings: imported };
 }
 
-function viewCommand(options: Record<string, string | string[] | boolean>): Promise<void> {
+function viewCommand(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+): Promise<void> {
   const port = stringOpt(options.port) ?? "5173";
   const child = spawn(
     "corepack",
     ["pnpm", "exec", "vp", "run", "@qdcli/viewer#dev", "--", "--host", "127.0.0.1", "--port", port],
     {
       cwd: findWorkspaceRoot(),
-      env: { ...process.env, QD_ROOT: process.cwd() },
+      env: { ...process.env, QD_ROOT: root },
       stdio: "inherit",
     },
   );
@@ -1562,6 +1617,54 @@ function strictVerificationArrayAt(
   });
 }
 
+function canonicalSnapshotFrom(source: unknown): GraphSnapshot | undefined {
+  if (!isRecord(source) || source.schema_version === undefined) return undefined;
+  if (source.schema_version !== 1) {
+    throw new Error(
+      `Unsupported qd export schema_version: ${formatUnknown(source.schema_version)}`,
+    );
+  }
+  const registries = valueAtPath(source, "registries");
+  if (!isRecord(registries)) throw new Error("qd export registries must be an object");
+  return {
+    schema_version: 1,
+    exported_at: requiredStringField(source, "exported_at"),
+    registries: {
+      groups: requiredArrayField(registries, "groups"),
+      projects: requiredArrayField(registries, "projects"),
+      milestones: requiredArrayField(registries, "milestones"),
+    },
+    nodes: requiredArrayField(source, "nodes"),
+    edges: requiredArrayField(source, "edges"),
+    findings: requiredArrayField(source, "findings"),
+    runs: requiredArrayField(source, "runs"),
+    node_notes: requiredArrayField(source, "node_notes"),
+  } as GraphSnapshot;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function requiredStringField(source: Record<string, unknown>, field: string): string {
+  const value = source[field];
+  if (typeof value !== "string" || !value.trim()) throw new Error(`qd export ${field} is required`);
+  return value;
+}
+
+function requiredArrayField<T = unknown>(source: Record<string, unknown>, field: string): T[] {
+  const value = source[field];
+  if (!Array.isArray(value)) throw new Error(`qd export ${field} must be an array`);
+  return value as T[];
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value) ?? "<unknown>";
+}
+
 function valueAtPath(source: unknown, pathText: string): unknown {
   return pathText.split(".").reduce<unknown>((current, part) => {
     if (!current || typeof current !== "object") return undefined;
@@ -1601,6 +1704,10 @@ function findWorkspaceRoot(): string {
 function helpText(): string {
   return `qd - Quick DAG CLI
 
+Global:
+  qd --root <path> <command>
+  QD_ROOT=/path/to/repo qd <command>
+
 Core:
   qd init
   qd setup [--no-hooks] [--print-agent-url]
@@ -1615,7 +1722,8 @@ Core:
   qd config show
   qd config get ci-command
   qd config set check-command --value "<fast project check command>"
-  qd import --from roadmap/spec-dag.json --schema-mapping qd-import-map.json [--dry-run] [--verbose]
+  qd export [--out roadmap/spec-dag.json]
+  qd import --from roadmap/spec-dag.json [--schema-mapping qd-import-map.json] [--dry-run] [--verbose]
 
 Graph:
   qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"]

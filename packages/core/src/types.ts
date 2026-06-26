@@ -101,10 +101,18 @@ export interface QdFinding {
 }
 
 export interface GraphSnapshot {
+  schema_version: number;
+  exported_at: string;
+  registries: {
+    groups: RegistryEntry[];
+    projects: RegistryEntry[];
+    milestones: RegistryEntry[];
+  };
   nodes: QdNode[];
   edges: QdEdge[];
   findings: QdFinding[];
   runs: QdRun[];
+  node_notes: NodeNote[];
 }
 
 export interface VelocityReport {
