@@ -10,6 +10,8 @@ import {
   ciPass,
   gateNode,
   graphSnapshot,
+  listFindings,
+  listRuns,
   markMerged,
   promoteFindings,
   recordCheckResult,
@@ -105,7 +107,38 @@ describe("graph lifecycle", () => {
 
     const promoted = await promoteFindings(root, "a");
     expect(promoted).toHaveLength(1);
-    expect(promoted[0]?.kind).toBe("audit-fix");
+    expect(promoted[0]?.node.kind).toBe("audit-fix");
+    expect(promoted[0]?.findingId).toBeTruthy();
+    expect(promoted[0]?.newNodeId).toBe(promoted[0]?.node.id);
+    expect(promoted[0]?.node.status_reason).toContain("Promoted from finding");
+  });
+
+  it("lists findings and node runs for orchestrator dashboards", async () => {
+    await addNode(root, {
+      id: "a",
+      title: "Build A",
+      spec: "Do A",
+      acceptance: "A works",
+    });
+    await addFinding(root, "a", {
+      severity: "P1",
+      title: "Missing acceptance",
+      evidence: "The acceptance criterion is not implemented.",
+    });
+    await addFinding(root, "a", {
+      severity: "P3",
+      title: "Polish docs",
+      evidence: "The docs could be clearer.",
+    });
+    await startRun(root, "a", "audit", { summary: "audit started" });
+
+    expect(
+      (await listFindings(root, { status: "open", severities: ["P1"] })).map(
+        (finding) => finding.title,
+      ),
+    ).toEqual(["Missing acceptance"]);
+    expect(await listFindings(root, { nodeId: "a" })).toHaveLength(2);
+    expect((await listRuns(root, "a")).map((run) => run.kind)).toEqual(["audit"]);
   });
 
   it("requires a passed CI run before merge", async () => {

@@ -22,7 +22,9 @@ import {
   initProject,
   listNodeNotes,
   listEdges,
+  listFindings,
   listNodes,
+  listRuns,
   listRegistry,
   markMerged,
   promoteFindings,
@@ -50,6 +52,7 @@ import {
   type QdConfig,
   type AddNodeInput,
   type EdgeType,
+  type FindingStatus,
   type ImportAdapter,
   type GraphSnapshot,
   type NodeKind,
@@ -122,6 +125,10 @@ async function main(): Promise<void> {
       return registryCommand(root, "projects", action, args.options, json);
     case "node":
       return nodeCommand(root, action, extra, args.options, json);
+    case "nodes":
+      return nodesCommand(root, action, args.options, json);
+    case "note":
+      return noteCommand(root, action, extra, args.options, json);
     case "edge":
       return edgeCommand(root, action, args.command.slice(2), args.options, json);
     case "claim":
@@ -152,9 +159,16 @@ async function main(): Promise<void> {
     case "finding":
       return findingCommand(root, action, extra, args.options, json);
     case "promote-findings":
-      return output(await promoteFindings(root, requiredArg(action, "node id")), json);
+      return output(
+        { promoted: await promoteFindings(root, requiredArg(action, "node id")) },
+        json,
+      );
     case "gate":
       return gate(root, requiredArg(action, "node id"), json);
+    case "advance":
+      return advanceCommand(root, action, args.options, json);
+    case "diff":
+      return diffCommand(root, action, args.options, json);
     case "ci":
       return ciCommand(root, action, extra, args.options, json);
     case "check":
@@ -362,32 +376,10 @@ async function nodeCommand(
   json: boolean,
 ): Promise<void> {
   if (action === "add") {
-    return output(
-      await addNode(root, {
-        id: stringOpt(options.id),
-        title: required(options.title, "--title"),
-        kind: strictEnumOpt(options.kind, isNodeKind, "--kind", "feature"),
-        milestone: stringOpt(options.milestone),
-        groupName: stringOpt(options.group),
-        projects: stringListOpt(options.project),
-        status: strictEnumOpt(options.status, isNodeStatus, "--status", "ready"),
-        priority: strictEnumOpt(options.priority, isPriority, "--priority", "P2"),
-        estimatePoints: numberOpt(options.estimate) ?? 1,
-        risk: strictEnumOpt(options.risk, isRisk, "--risk", "medium"),
-        spec: required(options.spec, "--spec"),
-        acceptance: required(options.acceptance, "--acceptance"),
-        validation: stringOpt(options.validation),
-        verification: stringListOpt(options.verify).map(parseVerification),
-        auditFocus: stringListOpt(options["audit-focus"]),
-        context: stringOpt(options.context),
-        statusReason: stringOpt(options["status-reason"]),
-        checkCommand: stringOpt(options["check-command"]),
-      }),
-      json,
-    );
+    return output(await addNode(root, await nodeInputFromOptions(root, options)), json);
   }
   if (action === "note") return nodeNoteCommand(root, id, options, json);
-  if (action === "show") return output(await getNode(root, requiredArg(id, "node id")), json);
+  if (action === "show") return nodeShowCommand(root, id, options, json);
   if (action === "list" || !action) return output(await listNodes(root), json);
   if (action === "cancel") return output(await cancelNode(root, requiredArg(id, "node id")), json);
   if (action === "edit") {
@@ -412,11 +404,102 @@ async function nodeCommand(
         context: stringOpt(options.context),
         status_reason: stringOpt(options["status-reason"]),
         check_command: stringOpt(options["check-command"]),
+        branch: stringOpt(options.branch),
       }),
       json,
     );
   }
   throw new Error(`Unknown node action: ${action}`);
+}
+
+async function nodesCommand(
+  root: string,
+  action: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  if (action !== "add-bulk") throw new Error(`Unknown nodes action: ${action}`);
+  const raw = await readJson(root, required(options["from-json"], "--from-json"));
+  const rawNodes: unknown[] | undefined = Array.isArray(raw)
+    ? (raw as unknown[])
+    : Array.isArray(asRecord(raw, "--from-json").nodes)
+      ? (asRecord(raw, "--from-json").nodes as unknown[])
+      : undefined;
+  if (!rawNodes) throw new Error("--from-json must contain an array or an object with nodes[]");
+  const createdNodes = [];
+  for (const [index, rawNode] of rawNodes.entries()) {
+    createdNodes.push(await addNode(root, normalizeNodeInput(rawNode, `nodes[${index}]`)));
+  }
+
+  const source = Array.isArray(raw) ? null : asRecord(raw, "--from-json");
+  if (source?.edges !== undefined && !Array.isArray(source.edges)) {
+    throw new Error("--from-json edges must be an array when provided");
+  }
+  const rawEdges = source?.edges ?? [];
+  const createdEdges = [];
+  for (const [index, rawEdge] of rawEdges.entries()) {
+    const edge = asRecord(rawEdge, `edges[${index}]`);
+    createdEdges.push(
+      await addEdge(
+        root,
+        requiredNodeStringField(edge, "from", `edges[${index}]`, "from_node"),
+        requiredNodeStringField(edge, "to", `edges[${index}]`, "to_node"),
+        strictOptionalEnum(
+          optionalStringField(edge, "type", `edges[${index}]`),
+          isEdgeType,
+          `edges[${index}].type`,
+          "requires",
+        ),
+      ),
+    );
+  }
+  return output({ nodes: createdNodes, edges: createdEdges }, json);
+}
+
+async function nodeShowCommand(
+  root: string,
+  id: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const nodeId = requiredArg(id, "node id");
+  const node = await getNode(root, nodeId);
+  if (!options.full && !options.include) return output(node, json);
+  const include = new Set(
+    (stringOpt(options.include) ?? "findings,notes,runs,audits")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+  const allowedIncludes = new Set(["findings", "notes", "runs", "audits"]);
+  for (const item of include) {
+    if (!allowedIncludes.has(item)) {
+      throw new Error(`--include contains unknown section: ${item}`);
+    }
+  }
+  const result: Record<string, unknown> = { node };
+  if (include.has("findings")) result.findings = await listFindings(root, { nodeId });
+  if (include.has("notes")) result.notes = await listNodeNotes(root, nodeId);
+  if (include.has("runs") || include.has("audits")) {
+    const runs = await listRuns(root, nodeId);
+    if (include.has("runs")) result.runs = runs;
+    if (include.has("audits")) result.audits = runs.filter((run) => run.kind === "audit");
+  }
+  return output(result, json);
+}
+
+async function noteCommand(
+  root: string,
+  action: string | undefined,
+  nodeId: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const id = requiredArg(nodeId, "node id");
+  if (action === "add")
+    return output(await addNodeNote(root, id, required(options.text, "--text")), json);
+  if (action === "list" || !action) return output(await listNodeNotes(root, id), json);
+  throw new Error(`Unknown note action: ${action}`);
 }
 
 async function edgeCommand(
@@ -483,6 +566,17 @@ async function findingCommand(
   }
   if (action === "resolve")
     return output(await resolveFinding(root, requiredArg(nodeOrFinding, "finding id")), json);
+  if (action === "list" || !action) {
+    if (options.open && options.status) throw new Error("Use either --open or --status, not both");
+    return output(
+      await listFindings(root, {
+        nodeId: stringOpt(options.node),
+        status: options.open ? "open" : strictEnumOpt(options.status, isFindingStatus, "--status"),
+        severities: parseSeverityList(options.severity),
+      }),
+      json,
+    );
+  }
   throw new Error(`Unknown finding action: ${action}`);
 }
 
@@ -532,6 +626,113 @@ async function checkCommand(
   if (action === "run")
     return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "check", options, json);
   throw new Error(`Unknown check action: ${action}`);
+}
+
+async function advanceCommand(
+  root: string,
+  nodeId: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const id = requiredArg(nodeId, "node id");
+  const steps: Array<{ step: string; ok: boolean; detail?: unknown }> = [];
+  let node = await getNode(root, id);
+
+  if (!["review", "mergeable", "done"].includes(node.status)) {
+    const summary = required(options.summary, "--summary");
+    node = await completeNode(root, id, summary);
+    steps.push({ step: "complete", ok: true, detail: { status: node.status } });
+  }
+
+  const gate = await gateNode(root, id);
+  steps.push({ step: "gate", ok: gate.ok, detail: gate });
+  if (!gate.ok) {
+    output({ ok: false, stoppedAt: "gate", steps, node: await getNode(root, id) }, json);
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = await readConfig(root);
+  if (!options["skip-check"] && config.checkCommand.trim()) {
+    const check = await executeConfiguredCheck(root, id, "check", options);
+    steps.push({ step: "check", ok: check.ok, detail: check });
+    if (!check.ok) {
+      output({ ok: false, stoppedAt: "check", steps, node: await getNode(root, id) }, json);
+      process.exitCode = check.exitCode;
+      return;
+    }
+  }
+
+  if (!options["skip-ci"] && config.ciCommand.trim()) {
+    const ci = await executeConfiguredCheck(root, id, "ci", options);
+    steps.push({ step: "ci", ok: ci.ok, detail: ci });
+    if (!ci.ok) {
+      output({ ok: false, stoppedAt: "ci", steps, node: await getNode(root, id) }, json);
+      process.exitCode = ci.exitCode;
+      return;
+    }
+  }
+
+  node = await getNode(root, id);
+  if (options.merge) {
+    node = await markMerged(root, id, stringOpt(options.strategy) ?? "squash");
+    steps.push({ step: "merge", ok: true, detail: { status: node.status } });
+  }
+
+  output(
+    {
+      ok: true,
+      stoppedAt: node.status === "done" ? "done" : node.status,
+      nextAction:
+        node.status === "mergeable" && !options.merge
+          ? "Perform the real git/GitHub merge, then run qd merge or qd advance --merge."
+          : null,
+      steps,
+      node,
+    },
+    json,
+  );
+}
+
+async function diffCommand(
+  root: string,
+  nodeId: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const node = await getNode(root, requiredArg(nodeId, "node id"));
+  if (!node.branch) throw new Error(`Node ${node.id} has no branch. Claim with --branch first.`);
+  const base = stringOpt(options.base) ?? "main";
+  const args = ["diff"];
+  if (options["name-only"]) args.push("--name-only");
+  let mergeBase: string | null = null;
+  if (options["self-only"]) {
+    const result = await captureCommand("git", ["merge-base", base, node.branch], root);
+    if (result.code !== 0) {
+      throw new Error(`git merge-base failed for ${base} and ${node.branch}: ${result.stderr}`);
+    }
+    mergeBase = result.stdout.trim();
+    args.push(`${mergeBase}..${node.branch}`);
+  } else {
+    args.push(`${base}...${node.branch}`);
+  }
+  const result = await captureCommand("git", args, root);
+  if (result.code !== 0) throw new Error(`git diff failed: ${result.stderr}`);
+  if (json) {
+    output(
+      {
+        nodeId: node.id,
+        base,
+        branch: node.branch,
+        selfOnly: Boolean(options["self-only"]),
+        mergeBase,
+        diff: result.stdout,
+      },
+      true,
+    );
+    return;
+  }
+  process.stdout.write(result.stdout);
 }
 
 async function planCommand(
@@ -607,6 +808,191 @@ async function nodeNoteCommand(
   const mode = stringOpt(options.mode) ?? "add";
   if (mode === "list") return output(await listNodeNotes(root, id), json);
   return output(await addNodeNote(root, id, required(options.text, "--text")), json);
+}
+
+async function nodeInputFromOptions(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+): Promise<AddNodeInput> {
+  if (options["from-json"]) {
+    return normalizeNodeInput(
+      await readJson(root, required(options["from-json"], "--from-json")),
+      "--from-json",
+    );
+  }
+  const spec = options["spec-file"]
+    ? await readTextFile(root, required(options["spec-file"], "--spec-file"))
+    : required(options.spec, "--spec");
+  const acceptance = options["acceptance-file"]
+    ? await readTextFile(root, required(options["acceptance-file"], "--acceptance-file"))
+    : required(options.acceptance, "--acceptance");
+  return {
+    id: stringOpt(options.id),
+    title: required(options.title, "--title"),
+    kind: strictEnumOpt(options.kind, isNodeKind, "--kind", "feature"),
+    milestone: stringOpt(options.milestone),
+    groupName: stringOpt(options.group),
+    projects: stringListOpt(options.project),
+    status: strictEnumOpt(options.status, isNodeStatus, "--status", "ready"),
+    priority: strictEnumOpt(options.priority, isPriority, "--priority", "P2"),
+    estimatePoints: numberOpt(options.estimate) ?? 1,
+    risk: strictEnumOpt(options.risk, isRisk, "--risk", "medium"),
+    spec,
+    acceptance,
+    validation: stringOpt(options.validation),
+    verification: stringListOpt(options.verify).map(parseVerification),
+    auditFocus: stringListOpt(options["audit-focus"]),
+    context: stringOpt(options.context),
+    statusReason: stringOpt(options["status-reason"]),
+    checkCommand: stringOpt(options["check-command"]),
+  };
+}
+
+function normalizeNodeInput(raw: unknown, context: string): AddNodeInput {
+  const value = asRecord(raw, context);
+  return {
+    id: optionalStringField(value, "id", context),
+    title: requiredNodeStringField(value, "title", context),
+    kind: strictOptionalEnum(
+      optionalStringField(value, "kind", context),
+      isNodeKind,
+      `${context}.kind`,
+      "feature",
+    ),
+    milestone: optionalStringField(value, "milestone", context),
+    groupName:
+      optionalStringField(value, "groupName", context) ??
+      optionalStringField(value, "group_name", context) ??
+      optionalStringField(value, "group", context),
+    projects: optionalStringArrayField(value, "projects", context) ?? [],
+    status: strictOptionalEnum(
+      optionalStringField(value, "status", context),
+      isNodeStatus,
+      `${context}.status`,
+      "ready",
+    ),
+    priority: strictOptionalEnum(
+      optionalStringField(value, "priority", context),
+      isPriority,
+      `${context}.priority`,
+      "P2",
+    ),
+    estimatePoints:
+      optionalNumberField(value, "estimatePoints", context) ??
+      optionalNumberField(value, "estimate_points", context) ??
+      optionalNumberField(value, "estimate", context) ??
+      1,
+    risk: strictOptionalEnum(
+      optionalStringField(value, "risk", context),
+      isRisk,
+      `${context}.risk`,
+      "medium",
+    ),
+    spec: requiredNodeStringField(value, "spec", context),
+    acceptance: requiredNodeStringField(value, "acceptance", context),
+    validation: optionalStringField(value, "validation", context),
+    verification: normalizeVerificationArray(value.verification, `${context}.verification`),
+    auditFocus:
+      optionalStringArrayField(value, "auditFocus", context) ??
+      optionalStringArrayField(value, "audit_focus", context) ??
+      [],
+    context: optionalStringField(value, "context", context),
+    statusReason:
+      optionalStringField(value, "statusReason", context) ??
+      optionalStringField(value, "status_reason", context),
+    checkCommand:
+      optionalStringField(value, "checkCommand", context) ??
+      optionalStringField(value, "check_command", context),
+  };
+}
+
+async function readJson(root: string, filePath: string): Promise<unknown> {
+  const text = await readTextFile(root, filePath);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function readTextFile(root: string, filePath: string): Promise<string> {
+  return readFile(path.resolve(root, filePath), "utf8");
+}
+
+function asRecord(value: unknown, context: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${context} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredNodeStringField(
+  value: Record<string, unknown>,
+  key: string,
+  context: string,
+  fallbackKey?: string,
+): string {
+  const result =
+    optionalStringField(value, key, context) ??
+    (fallbackKey ? optionalStringField(value, fallbackKey, context) : undefined);
+  if (!result) throw new Error(`${context}.${key} is required`);
+  return result;
+}
+
+function optionalStringField(
+  value: Record<string, unknown>,
+  key: string,
+  context: string,
+): string | undefined {
+  const raw = value[key];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string") throw new Error(`${context}.${key} must be a string`);
+  return raw;
+}
+
+function optionalNumberField(
+  value: Record<string, unknown>,
+  key: string,
+  context: string,
+): number | undefined {
+  const raw = value[key];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error(`${context}.${key} must be a number`);
+  }
+  return raw;
+}
+
+function optionalStringArrayField(
+  value: Record<string, unknown>,
+  key: string,
+  context: string,
+): string[] | undefined {
+  const raw = value[key];
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+    throw new Error(`${context}.${key} must be an array of strings`);
+  }
+  return raw;
+}
+
+function normalizeVerificationArray(value: unknown, context: string): VerificationEntry[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error(`${context} must be an array`);
+  return value.map((entry, index) => {
+    if (typeof entry === "string") return parseVerification(entry);
+    const record = asRecord(entry, `${context}[${index}]`);
+    const type = requiredNodeStringField(record, "type", `${context}[${index}]`);
+    if (!isVerificationType(type)) {
+      throw new Error(`${context}[${index}].type must be one of ${VERIFICATION_TYPES.join(", ")}`);
+    }
+    return {
+      type,
+      value: requiredNodeStringField(record, "value", `${context}[${index}]`),
+    };
+  });
 }
 
 async function importCommand(
@@ -825,13 +1211,29 @@ async function runConfiguredCheck(
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
+  const result = await executeConfiguredCheck(root, nodeId, kind, options);
+  output(result, json);
+  if (!result.ok) process.exitCode = result.exitCode;
+}
+
+async function executeConfiguredCheck(
+  root: string,
+  nodeId: string,
+  kind: "check" | "ci",
+  options: Record<string, string | string[] | boolean>,
+): Promise<{
+  ok: boolean;
+  exitCode: number;
+  command: string | null;
+  logPath: string | null;
+  node?: unknown;
+  blocking?: unknown;
+}> {
   const config = await readConfig(root);
   if (config.requireGateBeforeCi) {
     const gate = await gateNode(root, nodeId);
     if (!gate.ok) {
-      output({ ok: false, blocking: gate.blocking }, json);
-      process.exitCode = 1;
-      return;
+      return { ok: false, exitCode: 1, command: null, logPath: null, blocking: gate.blocking };
     }
   }
 
@@ -842,6 +1244,7 @@ async function runConfiguredCheck(
     stringOpt(options.cmd) ??
     node.check_command ??
     (kind === "ci" ? config.ciCommand : config.checkCommand);
+  if (!command.trim()) throw new Error(`${kind}_command is empty; configure it or pass --cmd`);
   const paths = getProjectPaths(root);
   await mkdir(paths.logsDir, { recursive: true });
   const startedAt = new Date().toISOString();
@@ -867,8 +1270,7 @@ async function runConfiguredCheck(
     logPath,
     node: updatedNode,
   };
-  output(result, json);
-  if (exitCode !== 0) process.exitCode = exitCode;
+  return result;
 }
 
 async function assertCleanWorktree(root: string, except: string[]): Promise<void> {
@@ -1081,6 +1483,8 @@ const NODE_STATUSES = [
 const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
 const RISKS = ["low", "medium", "high"] as const;
 const EDGE_TYPES = ["requires", "unblocks", "supersedes", "related"] as const;
+const FINDING_STATUSES = ["open", "resolved", "promoted", "dismissed"] as const;
+const VERIFICATION_TYPES = ["command", "manual", "url", "note"] as const;
 
 function mapImportNode(
   raw: unknown,
@@ -1611,6 +2015,7 @@ function validValuesFor(isValue: (candidate: string) => boolean): readonly strin
   if (isValue === isPriority) return PRIORITIES;
   if (isValue === isRisk) return RISKS;
   if (isValue === isEdgeType) return EDGE_TYPES;
+  if (isValue === isFindingStatus) return FINDING_STATUSES;
   return [];
 }
 
@@ -1637,6 +2042,24 @@ function isRisk(value: string): value is Risk {
 
 function isEdgeType(value: string): value is EdgeType {
   return (EDGE_TYPES as readonly string[]).includes(value);
+}
+
+function isFindingStatus(value: string): value is FindingStatus {
+  return (FINDING_STATUSES as readonly string[]).includes(value);
+}
+
+function isVerificationType(value: string): value is VerificationEntry["type"] {
+  return (VERIFICATION_TYPES as readonly string[]).includes(value);
+}
+
+function parseSeverityList(value: string | string[] | boolean | undefined): Priority[] | undefined {
+  const raw = stringListOpt(value).flatMap((item) => item.split(","));
+  if (raw.length === 0) return undefined;
+  return raw.map((item) => {
+    const severity = item.trim();
+    if (!isPriority(severity)) throw new Error(`--severity must contain P0, P1, P2, or P3`);
+    return severity;
+  });
 }
 
 function parseVerification(value: string): VerificationEntry {
@@ -1830,19 +2253,28 @@ Core:
 
 Graph:
   qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"]
+  qd node add --from-json <node.json>
+  qd node add --title <text> --spec-file <path> --acceptance-file <path>
+  qd nodes add-bulk --from-json <plan.json>
   qd node list|show|edit|cancel|note
+  qd node show <id> --full
+  qd note add <node> --text <text>
   qd group register --name <name>
   qd project register --name <name>
   qd milestone register --name <name> --rank <n>
   qd edge add <from> <to> [--type requires]
-  qd claim [node] --agent <name>
+  qd claim [node] --agent <name> [--branch <branch>]
   qd complete <node> --summary <text>
+  qd advance <node> --summary <text> [--merge]
+  qd diff <node> [--base main] [--self-only] [--name-only]
 
 Audit:
   qd audit start <node>
   qd finding add <node> --severity P1 --title <text> --evidence <text>
   qd finding add [node] --from-report <audit-report.json>
+  qd finding list [--open] [--severity P0,P1] [--node <id>]
   qd finding resolve <finding>
+  qd promote-findings <node>
   qd gate <node>
   qd check run <node>
   qd ci run <node>

@@ -100,6 +100,12 @@ export interface QdFinding {
   resolved_at: string | null;
 }
 
+export interface PromotedFinding {
+  findingId: string;
+  newNodeId: string;
+  node: QdNode;
+}
+
 export interface GraphSnapshot {
   schema_version: number;
   exported_at: string;

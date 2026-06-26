@@ -29,6 +29,8 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd config set ci-command --value <command>`
 - `qd prompt plan|implement|audit|resolve [node] [--json]`
 - `qd workspace status|ready|graph [--json] [--config <toml>] [--repo <path>]`
+- `qd advance <node> --summary <text> [--merge]`
+- `qd diff <node> [--base main] [--self-only] [--name-only]`
 
 Config read/write round trip:
 
@@ -79,16 +81,34 @@ See [Importing An Existing DAG](./import.md) for the full `ImportMapping` schema
 - `qd project register --name <name>`
 - `qd milestone register --name <name> --rank <number>`
 - `qd node add --title <text> --spec <text> --acceptance <text>`
+- `qd node add --from-json <node.json>`
+- `qd node add --title <text> --spec-file <path> --acceptance-file <path>`
+- `qd nodes add-bulk --from-json <plan.json>`
 - `qd node add ... --group <name> --project <name> --project <name>`
 - `qd node add ... --milestone <name> --verify type=command,value="just ci" --audit-focus <text>`
 - `qd node list`
 - `qd node show <id>`
+- `qd node show <id> --full`
+- `qd node show <id> --include findings,notes,audits,runs`
 - `qd node edit <id> [--title] [--spec] [--acceptance]`
+- `qd node edit <id> --branch <branch>`
 - `qd node note <id> --text <text>`
 - `qd node note <id> --mode list`
+- `qd note add <id> --text <text>`
+- `qd note list <id>`
 - `qd edge add <from> <to> [--type requires]`
-- `qd claim [node] --agent <name>`
+- `qd claim [node] --agent <name> [--branch <branch>]`
 - `qd complete <node> --summary <text>`
+
+Use JSON or file-backed node creation when generated specs contain shell-sensitive text:
+
+```sh
+qd node add --from-json roadmap/new-node.json
+qd nodes add-bulk --from-json roadmap/mint-plan.json
+qd node add --title "Audit cleanup" --spec-file /tmp/spec.md --acceptance-file /tmp/acceptance.md
+```
+
+Bulk mint plans may be either a node array or an object with `nodes[]` and optional `edges[]`. Node JSON is strict and uses the same typed fields as qd nodes: malformed strings, arrays, enums, or verification entries fail instead of being silently dropped.
 
 ## Workspace
 
@@ -124,11 +144,20 @@ qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
 - `qd audit start <node>`
 - `qd finding add <node> --severity P1 --title <text> --evidence <text>`
 - `qd finding add [node] --from-report <audit-report.json>`
+- `qd finding list [--open] [--severity P0,P1] [--node <id>]`
 - `qd finding resolve <finding>`
 - `qd promote-findings <node>`
 - `qd gate <node>`
 - `qd check run <node>`
 - `qd ci run <node>`
+
+`qd promote-findings` prints `{ "promoted": [...] }` with the source finding id and new node id. It refuses while P0/P1 findings are open and includes the blocking finding ids and titles in the error.
+
+## Advance And Diff
+
+`qd advance <node> --summary "..."` is a lifecycle shortcut for orchestrators. It records completion when needed, runs the P0/P1 gate, runs configured `check_command` and `ci_command` when present, and reports the step where it stopped. It does not perform a git or GitHub merge. Pass `--merge` only after the real repository merge has been performed or when recording qd's state transition is intentionally the next step.
+
+`qd diff <node> --self-only --base main` prints a diff from the node branch's merge-base with `main` to the node branch. This is useful when audit subagents need the branch's own change set without unrelated movement from an ahead main branch.
 
 ## Lifecycle
 

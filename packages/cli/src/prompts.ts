@@ -97,6 +97,16 @@ Use \`qd snapshot --json\` when the orchestrator needs a compact state refresh w
 
 For a multi-repo view, use \`qd workspace status --json\`, \`qd workspace ready --json\`, and \`qd workspace graph --json\` as read-only planning tools. Workspace roll-up is not a distributed executor; it helps the orchestrator choose where to focus, then normal qd commands run inside the target repo.
 
+When generated specs contain long text, code spans, quotes, or shell-sensitive characters, create work from structured inputs instead of shell-escaped flags:
+
+\`\`\`sh
+qd node add --from-json roadmap/new-node.json
+qd nodes add-bulk --from-json roadmap/mint-plan.json
+qd node add --title "Scoped follow-up" --spec-file /tmp/spec.md --acceptance-file /tmp/acceptance.md
+\`\`\`
+
+Use \`qd finding list --open --severity P0,P1 --json\` as the active blocker dashboard. Use \`qd node show <id> --full --json\` before delegation or audit when the receiving agent needs notes, findings, and prior runs. Use \`qd diff <id> --self-only --base main\` when an audit should see only the node branch's own changes.
+
 For mature projects, import existing DAG state instead of recreating it manually:
 
 \`\`\`sh
@@ -129,6 +139,8 @@ qd milestone register --name "baseline" --rank 10
 10. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses \`qd merge <id>\` only after qd marks the node mergeable.
 
 \`qd merge\` records qd state only. It does not run \`git merge\`, squash commits, rebase, push, or open/merge a GitHub PR.
+
+\`qd advance <id> --summary "..." \` can collapse the clean path through completion, gate, check, and CI. Add \`--merge\` only when it is correct to record qd's merge state.
 
 Never bypass the ready queue. If the graph is wrong, fix the graph.
 `;

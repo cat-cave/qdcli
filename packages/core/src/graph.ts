@@ -11,6 +11,7 @@ import {
 } from "./db.js";
 import type {
   EdgeType,
+  FindingStatus,
   GraphSnapshot,
   NodeNote,
   NodeKind,
@@ -20,6 +21,7 @@ import type {
   QdFinding,
   QdNode,
   QdRun,
+  PromotedFinding,
   RegistryEntry,
   Risk,
   RunKind,
@@ -146,6 +148,8 @@ export async function updateNode(
       | "group_name"
       | "projects"
       | "status"
+      | "owner"
+      | "branch"
       | "priority"
       | "risk"
       | "spec"
@@ -175,7 +179,7 @@ export async function updateNode(
     db,
     `update nodes set
       title = ?, kind = ?, milestone = ?, group_name = ?, projects_json = ?, status = ?, priority = ?, estimate_points = ?, risk = ?,
-      spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?, check_command = ?, updated_at = ?
+      owner = ?, branch = ?, spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?, check_command = ?, updated_at = ?
     where id = ?`,
     [
       next.title,
@@ -187,6 +191,8 @@ export async function updateNode(
       next.priority,
       next.estimate_points,
       next.risk,
+      next.owner,
+      next.branch,
       next.spec,
       next.acceptance,
       next.validation,
@@ -218,6 +224,47 @@ export async function getNode(root: string, id: string): Promise<QdNode> {
   const row = await get<NodeRow>(db, "select * from nodes where id = ?", [id]);
   if (!row) throw new Error(`Node not found: ${id}`);
   return hydrateNode(row);
+}
+
+export async function listFindings(
+  root: string,
+  filters: {
+    nodeId?: string | null;
+    status?: FindingStatus | null;
+    severities?: Priority[];
+  } = {},
+): Promise<QdFinding[]> {
+  const db = await openDatabase(root);
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (filters.nodeId) {
+    where.push("node_id = ?");
+    params.push(filters.nodeId);
+  }
+  if (filters.status) {
+    where.push("status = ?");
+    params.push(filters.status);
+  }
+  if (filters.severities && filters.severities.length > 0) {
+    where.push(`severity in (${filters.severities.map(() => "?").join(", ")})`);
+    params.push(...filters.severities);
+  }
+  const clause = where.length > 0 ? ` where ${where.join(" and ")}` : "";
+  return all<QdFinding>(
+    db,
+    `select * from findings${clause} order by
+      case severity when 'P0' then 0 when 'P1' then 1 when 'P2' then 2 else 3 end,
+      created_at asc`,
+    params,
+  );
+}
+
+export async function listRuns(root: string, nodeId?: string | null): Promise<QdRun[]> {
+  const db = await openDatabase(root);
+  if (nodeId) {
+    return all<QdRun>(db, "select * from runs where node_id = ? order by started_at asc", [nodeId]);
+  }
+  return all<QdRun>(db, "select * from runs order by started_at asc");
 }
 
 export async function cancelNode(root: string, id: string): Promise<QdNode> {
@@ -457,16 +504,23 @@ export async function gateNode(
   return { ok: blocking.length === 0, blocking };
 }
 
-export async function promoteFindings(root: string, nodeId: string): Promise<QdNode[]> {
+export async function promoteFindings(root: string, nodeId: string): Promise<PromotedFinding[]> {
   const db = await openDatabase(root);
   const gate = await gateNode(root, nodeId);
-  if (!gate.ok) throw new Error("Cannot promote P2/P3 findings while P0/P1 findings are open");
+  if (!gate.ok) {
+    const blocking = gate.blocking
+      .map((finding) => `${finding.severity} ${finding.id}: ${finding.title}`)
+      .join("; ");
+    throw new Error(
+      `Cannot promote findings while P0/P1 findings are open. Resolve or escalate first: ${blocking}`,
+    );
+  }
   const findings = await all<QdFinding>(
     db,
     "select * from findings where node_id = ? and status = 'open' and severity in ('P2', 'P3') order by created_at asc",
     [nodeId],
   );
-  const promoted: QdNode[] = [];
+  const promoted: PromotedFinding[] = [];
   for (const finding of findings) {
     const node = await addNode(root, {
       title: finding.title,
@@ -477,12 +531,13 @@ export async function promoteFindings(root: string, nodeId: string): Promise<QdN
       spec: [finding.evidence, finding.suggested_fix].filter(Boolean).join("\n\n"),
       acceptance: finding.expected ?? "Finding is addressed and verified.",
       context: finding.path ? `${finding.path}${finding.line ? `:${finding.line}` : ""}` : null,
+      statusReason: `Promoted from finding ${finding.id} on node ${nodeId}.`,
     });
     await run(db, "update findings set status = 'promoted', resolved_at = ? where id = ?", [
       new Date().toISOString(),
       finding.id,
     ]);
-    promoted.push(node);
+    promoted.push({ findingId: finding.id, newNodeId: node.id, node });
   }
   return promoted;
 }

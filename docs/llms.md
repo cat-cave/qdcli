@@ -159,6 +159,8 @@ qd finding add <node> --from-report roadmap/audit-report.json
 qd finding resolve <finding-id>
 ```
 
+Use `qd finding list --open --severity P0,P1 --json` for a dashboard of active blockers across the DAG. Use `qd node show <node> --full --json` when a delegate or auditor needs the node plus findings, notes, and runs in one payload.
+
 Severity policy:
 
 - P0: security, data loss, build break, or critical incorrect behavior.
@@ -173,6 +175,8 @@ qd gate <node>
 qd promote-findings <node>
 ```
 
+`qd promote-findings` returns the finding id and new node id for every promoted P2/P3, and the new node records where it came from. Preserve that trail when explaining why follow-up nodes exist.
+
 ## Run Checks And Merge
 
 Normal path:
@@ -183,6 +187,8 @@ qd check run <node>
 qd ci run <node>
 qd merge <node>
 ```
+
+For a clean happy path, `qd advance <node> --summary "<what changed>"` can run completion, gate, configured check, and configured CI in sequence. Add `--merge` only when it is correct to record qd's merge state. qd still does not perform the real git or GitHub merge.
 
 `qd ci run` runs the configured `ci_command`, streams output, writes a log under `.qd/logs/`, records pass/fail, and moves the node to `mergeable` or `blocked`.
 
@@ -203,6 +209,7 @@ Do not use `qd ci pass` unless recording a full CI gate that was already complet
 Use:
 
 ```sh
+qd snapshot --json
 qd stats --json
 qd velocity --window 7
 qd critical-path
@@ -212,6 +219,8 @@ qd view
 ```
 
 These show ready work, completed points, remaining points, velocity, critical path, and ETA.
+
+When audit context depends on branch diffs, prefer `qd diff <node> --self-only --base main` over ad hoc `main..branch` prompts. It uses the node's recorded branch and merge-base to avoid including unrelated movement from main.
 
 ## First Trial Goal
 
