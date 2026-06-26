@@ -62,8 +62,6 @@ interface NodeRow extends Omit<QdNode, "projects" | "verification" | "audit_focu
 }
 
 export async function setupProject(root = process.cwd()): Promise<void> {
-  const db = await openDatabase(root);
-  await applyMigrations(db);
   await initProject(root);
 }
 

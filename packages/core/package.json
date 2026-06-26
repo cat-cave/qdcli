@@ -1,15 +1,29 @@
 {
-  "name": "@qdcli/core",
+  "name": "@cat-cave/qdcli-core",
   "version": "0.1.0",
-  "private": true,
+  "description": "Core graph engine for Quick DAG CLI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cat-cave/qdcli.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "prepack": "pnpm run build",
     "build": "vp pack src/index.ts --format esm --dts",
     "typecheck": "vp exec tsgo --noEmit -p tsconfig.json",
     "typecheck:tsgo": "vp exec tsgo --noEmit -p tsconfig.json",
@@ -17,5 +31,8 @@
   },
   "dependencies": {
     "@tursodatabase/database": "^0.6.1"
+  },
+  "engines": {
+    "node": ">=24.14.0"
   }
 }

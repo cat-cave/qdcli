@@ -17,8 +17,9 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd snapshot [--json] [--milestone <name>]`
 - `qd ready [--json]`
 - `qd graph --format table|json|mermaid|dot`
+- `qd validate [--json]`
 - `qd export [--out <json>]`
-- `qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose]`
+- `qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults]`
 - `qd velocity [--window 7]`
 - `qd critical-path [--milestone <name>]`
 - `qd eta [--window 7] [--milestone <name>]`
@@ -62,7 +63,7 @@ qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.js
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 ```
 
-The import path is strict: unknown statuses require `statusMap`, malformed arrays fail, required fields must resolve, dependency arrays can create edges, and qd checks duplicate ids, missing edge endpoints, and `requires` cycles before writing.
+The import path is strict: unknown statuses require `statusMap`, malformed arrays fail, required fields must resolve, dependency arrays can create edges, and qd checks duplicate ids, missing edge endpoints, and `requires` cycles before writing. Non-dry-run imports fail if mapped nodes need defaulted fields unless `--allow-defaults` is passed intentionally.
 
 Reference adapters normalize common roadmap formats into qd's canonical import JSON:
 
@@ -162,7 +163,7 @@ qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
 ## Lifecycle
 
 - `qd ci start <node> --cmd <command>`
-- `qd ci pass <node>`
+- `qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)`
 - `qd ci fail <node>`
 - `qd merge <node> --strategy squash`
 

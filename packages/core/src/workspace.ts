@@ -156,7 +156,8 @@ async function readWorkspaceConfig(configPath?: string): Promise<string[]> {
     throw error;
   }
   const match = /^\s*repos\s*=\s*\[(?<items>[\s\S]*?)\]\s*$/m.exec(stripTomlComments(content));
-  if (!match?.groups?.items) throw new Error(`${resolved}: expected repos = ["path", ...]`);
+  if (match?.groups?.items === undefined)
+    throw new Error(`${resolved}: expected repos = ["path", ...]`);
   return [...match.groups.items.matchAll(/"([^"]+)"/g)].map((item) => {
     const repo = item[1];
     if (!repo) throw new Error(`${resolved}: repo paths must be non-empty strings`);

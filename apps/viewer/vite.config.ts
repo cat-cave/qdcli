@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import react from "@vitejs/plugin-react";
-import { analyticsReport, graphSnapshot } from "@qdcli/core";
+import { analyticsReport, graphSnapshot } from "@cat-cave/qdcli-core";
 import { defineConfig, lazyPlugins, type ViteDevServer } from "vite-plus";
 
 type MiddlewareHandler = (request: IncomingMessage, response: ServerResponse) => Promise<void>;

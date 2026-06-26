@@ -1,11 +1,12 @@
 {
-  "name": "qdcli",
+  "name": "@cat-cave/qdcli",
   "version": "0.1.0",
   "description": "Quick DAG CLI for agent-readable project orchestration",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cat-cave/qdcli.git"
+    "url": "git+https://github.com/cat-cave/qdcli.git",
+    "directory": "packages/cli"
   },
   "bin": {
     "qd": "./dist/index.mjs"
@@ -18,13 +19,20 @@
   "exports": {
     ".": "./dist/index.mjs"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "prepack": "pnpm run build",
     "build": "vp pack src/index.ts --format esm --dts --banner.js \"#!/usr/bin/env node\"",
     "typecheck": "vp exec tsgo --noEmit -p tsconfig.json",
     "typecheck:tsgo": "vp exec tsgo --noEmit -p tsconfig.json",
     "test": "vp test run"
   },
   "dependencies": {
-    "@qdcli/core": "workspace:*"
+    "@cat-cave/qdcli-core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24.14.0"
   }
 }

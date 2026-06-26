@@ -6,6 +6,24 @@ qd does not run agents or decide where subagents execute. The intended model is 
 
 ## Install
 
+Universal npm package install:
+
+```sh
+pnpm dlx @cat-cave/qdcli --help
+pnpm dlx @cat-cave/qdcli setup --print-agent-url
+```
+
+Other package managers work too:
+
+```sh
+npx @cat-cave/qdcli --help
+bunx @cat-cave/qdcli --help
+npm install -g @cat-cave/qdcli
+qd --version
+```
+
+Nix install:
+
 ```sh
 nix profile install github:cat-cave/qdcli#qd
 qd --version
@@ -28,8 +46,8 @@ The Nix shell provides Node 24, git, gh, just, and Corepack-managed pnpm. Projec
 ```sh
 qd setup
 qd agent install skills-sh
-qd config set check-command --value "vp check"
-qd config set ci-command --value "vp run ci"
+qd config set check-command --value "<fast project check command>"
+qd config set ci-command --value "<full project CI command>"
 qd config get ci-command
 qd group register --name runtime
 qd milestone register --name baseline --rank 10
@@ -41,6 +59,7 @@ qd complete scaffold --summary "Implemented the scaffold."
 qd audit start scaffold
 qd gate scaffold
 qd ci run scaffold
+# Perform the real git/GitHub merge using this repository's normal workflow.
 qd merge scaffold
 qd stats
 qd critical-path
@@ -59,11 +78,13 @@ See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, d
 
 `qd merge` records qd state only. It does not run git or GitHub merges; keep using the repo's normal merge workflow and use qd to enforce the DAG, audit, and green-CI gate.
 
-Start the read-only viewer:
+When running from a qdcli source checkout, start the read-only viewer:
 
 ```sh
 qd view
 ```
+
+Installed npm/Nix binaries currently support the DAG commands; `qd view` requires the source checkout until viewer assets are shipped with the binary.
 
 ## Agent Bootstrap
 

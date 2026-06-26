@@ -47,7 +47,7 @@ Register strict metadata before import when the project relies on it:
 
 ```sh
 qd group register --name "agent-runtime"
-qd project register --name "itotori"
+qd project register --name "app"
 qd milestone register --name "baseline" --rank 10
 ```
 
@@ -61,7 +61,7 @@ qd milestone register --name "baseline" --rank 10
 6. Audit subagents review the completed node and the orchestrator records structured findings.
 7. P0/P1 findings are resolved before checks. P2/P3 findings are promoted after the current node passes the gate.
 8. The orchestrator runs `qd check run <id>` when a fast local preflight is useful.
-9. The orchestrator runs `qd ci run <id>` for the full merge gate; `qd ci pass` is only for recording an externally completed CI check.
+9. The orchestrator runs `qd ci run <id>` for the full merge gate; `qd ci record-pass` is only for recording an externally completed CI check with evidence.
 10. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses `qd merge <id>` only after qd marks the node mergeable.
 
 `qd merge` records qd state only. It does not run `git merge`, squash commits, rebase, push, or open/merge a GitHub PR.

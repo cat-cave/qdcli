@@ -44,7 +44,7 @@
               inherit (finalAttrs) pname version src;
               inherit pnpm;
               fetcherVersion = 3;
-              hash = "sha256-LLtczsBbqBJ/TMU2FBjdO8DT9JaWxwgi+Kfn6JntQkQ=";
+              hash = "sha256-ieOpf6zHB3xGzi9K3jfb5wrOzPAbvwW693UNaRC4ZG8=";
             };
 
             nativeBuildInputs = [
@@ -69,8 +69,8 @@
               runHook preInstall
 
               install -Dm755 packages/cli/dist/index.mjs "$out/lib/qd/index.mjs"
-              mkdir -p "$out/lib/qd/node_modules/@qdcli/core"
-              cp -r packages/core/dist packages/core/package.json "$out/lib/qd/node_modules/@qdcli/core/"
+              mkdir -p "$out/lib/qd/node_modules/@cat-cave/qdcli-core"
+              cp -r packages/core/dist packages/core/package.json "$out/lib/qd/node_modules/@cat-cave/qdcli-core/"
               mkdir -p "$out/lib/qd/node_modules/@tursodatabase"
               cp -rL node_modules/.pnpm/@tursodatabase+database@*/node_modules/@tursodatabase/database \
                 "$out/lib/qd/node_modules/@tursodatabase/"

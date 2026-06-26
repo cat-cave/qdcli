@@ -41,7 +41,13 @@ qd export --out roadmap/spec-dag.json
 qd import --from roadmap/spec-dag.json
 ```
 
-Use this export/import path when moving between machines, worktrees, or remote execution hosts. Do not ask the user to commit `.qd/qd.db`.
+Use this export/import path when moving between machines, worktrees, or remote execution hosts. Do not ask the user to commit `.qd/qd.db`. After qd mutations that should be shared, export and commit the JSON snapshot:
+
+```sh
+qd export --out roadmap/spec-dag.json
+git add roadmap/spec-dag.json
+git commit -m "Update qd DAG"
+```
 
 Before creating work, configure the repository's real commands:
 
@@ -194,7 +200,7 @@ For a clean happy path, `qd advance <node> --summary "<what changed>"` can run c
 
 `qd check run` runs the configured `check_command` or the node's `check_command` override. It records a check run and log, but it does not mark the node mergeable. If the check fails, qd blocks the node.
 
-Do not use `qd ci pass` unless recording a full CI gate that was already completed outside qd.
+Do not record an external CI pass unless the full trusted gate already completed outside qd. Use `qd ci record-pass <node> --summary "..." --url <ci-url>` or another evidence flag.
 
 `qd merge` records the merge only after qd confirms:
 
@@ -219,6 +225,8 @@ qd view
 ```
 
 These show ready work, completed points, remaining points, velocity, critical path, and ETA.
+
+`qd view` currently requires the qdcli source checkout. Installed npm/Nix binaries should use the JSON commands above until viewer assets are shipped with the installed CLI.
 
 When audit context depends on branch diffs, prefer `qd diff <node> --self-only --base main` over ad hoc `main..branch` prompts. It uses the node's recorded branch and merge-base to avoid including unrelated movement from main.
 

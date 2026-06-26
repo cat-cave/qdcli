@@ -10,7 +10,6 @@ import {
   analyticsReport,
   cancelNode,
   ciFail,
-  ciPass,
   claimNode,
   completeNode,
   criticalPathReport,
@@ -60,7 +59,7 @@ import {
   type Priority,
   type Risk,
   type VerificationEntry,
-} from "@qdcli/core";
+} from "@cat-cave/qdcli-core";
 import { promptText, skillText } from "./prompts.js";
 
 interface ParsedArgs {
@@ -72,7 +71,6 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const [group, action, extra] = args.command;
   const json = Boolean(args.options.json);
-  const root = await resolveProjectRoot({ root: stringOpt(args.options.root) });
 
   if (args.options.version || group === "version" || group === "--version" || group === "-v") {
     console.log("0.1.0");
@@ -83,6 +81,11 @@ async function main(): Promise<void> {
     console.log(helpText());
     return;
   }
+
+  const root = await resolveProjectRoot({
+    root: stringOpt(args.options.root),
+    allowMissing: group === "init" || group === "setup",
+  });
 
   switch (group) {
     case "init":
@@ -178,7 +181,7 @@ async function main(): Promise<void> {
         await markMerged(
           root,
           requiredArg(action, "node id"),
-          stringOpt(args.options.strategy) ?? "squash",
+          strictEnumOpt(args.options.strategy, isMergeStrategy, "--strategy", "squash"),
         ),
         json,
       );
@@ -226,14 +229,13 @@ async function main(): Promise<void> {
 }
 
 async function doctor(root: string, json: boolean): Promise<void> {
-  await initProject(root);
   const validationResult = await validateGraph(root);
   const config = await readConfig(root);
   const configErrors: string[] = [];
   const configWarnings: string[] = [];
   const sourceCheckout = await isSourceCheckout();
   if (!config.checkCommand.trim()) configWarnings.push("check_command is empty");
-  if (!config.ciCommand.trim()) configWarnings.push("ci_command is empty");
+  if (!config.ciCommand.trim()) configErrors.push("ci_command is empty");
   if (!["squash", "merge", "rebase"].includes(config.mergeStrategy)) {
     configErrors.push("merge_strategy must be squash, merge, or rebase");
   }
@@ -553,7 +555,7 @@ async function findingCommand(
   if (action === "add") {
     return output(
       await addFinding(root, requiredArg(nodeOrFinding, "node id"), {
-        severity: strictEnumOpt(options.severity, isPriority, "--severity", "P2"),
+        severity: strictEnum(required(options.severity, "--severity"), isPriority, "--severity"),
         title: required(options.title, "--title"),
         evidence: required(options.evidence, "--evidence"),
         path: stringOpt(options.path),
@@ -604,16 +606,44 @@ async function ciCommand(
     );
   }
   if (action === "pass")
+    throw new Error(
+      "Use qd ci record-pass <node> --summary <text> with --log-path, --url, or --external-id",
+    );
+  if (action === "record-pass") {
+    const evidence = ciEvidence(options);
     return output(
-      await ciPass(root, requiredArg(nodeId, "node id"), stringOpt(options.summary)),
+      await recordCiResult(root, requiredArg(nodeId, "node id"), {
+        status: "passed",
+        summary: `${required(options.summary, "--summary")}\n${evidence.summary}`,
+        logPath: evidence.logPath,
+      }),
       json,
     );
+  }
   if (action === "fail")
     return output(
       await ciFail(root, requiredArg(nodeId, "node id"), stringOpt(options.summary)),
       json,
     );
   throw new Error(`Unknown ci action: ${action}`);
+}
+
+function ciEvidence(options: Record<string, string | string[] | boolean>): {
+  summary: string;
+  logPath?: string;
+} {
+  const logPath = stringOpt(options["log-path"]);
+  const url = stringOpt(options.url);
+  const externalId = stringOpt(options["external-id"]);
+  if (!logPath && !url && !externalId) {
+    throw new Error("CI pass recording requires --log-path, --url, or --external-id");
+  }
+  const parts = [
+    logPath ? `log_path=${logPath}` : null,
+    url ? `url=${url}` : null,
+    externalId ? `external_id=${externalId}` : null,
+  ].filter(Boolean);
+  return { summary: `Evidence: ${parts.join(", ")}`, logPath };
 }
 
 async function checkCommand(
@@ -671,6 +701,8 @@ async function advanceCommand(
       process.exitCode = ci.exitCode;
       return;
     }
+  } else if (!options["skip-ci"] && !config.ciCommand.trim()) {
+    throw new Error("ci_command is empty; configure it or pass --skip-ci explicitly");
   }
 
   node = await getNode(root, id);
@@ -1005,6 +1037,7 @@ async function importCommand(
   const adapter = stringOpt(options.adapter);
   const dryRun = Boolean(options["dry-run"]);
   const verbose = Boolean(options.verbose);
+  const allowDefaults = Boolean(options["allow-defaults"]);
   if (adapter && mappingPath) {
     throw new Error("qd import --adapter cannot be combined with --schema-mapping");
   }
@@ -1154,6 +1187,14 @@ async function importCommand(
     }
     const cycle = findImportCycle(plannedImportEdges.filter((edge) => edge.type === "requires"));
     if (cycle) report.errors.push(`requires edge cycle detected: ${cycle.join(" -> ")}`);
+  }
+
+  if (report.errors.length === 0 && !dryRun) {
+    if (!allowDefaults && report.defaults.length > 0) {
+      report.errors.push(
+        `Import would use ${report.defaults.length} defaulted field(s). Re-run with --allow-defaults if those defaults are intentional.`,
+      );
+    }
   }
 
   if (report.errors.length === 0 && !dryRun) {
@@ -1347,8 +1388,8 @@ async function agentCommand(
   if (action === "install") {
     const requested = targetArg ?? stringOpt(options.agent) ?? "skills-sh";
     const target = stringOpt(options.target);
-    if (requested !== "skills-sh" && requested !== "codex" && requested !== "claude") {
-      throw new Error("agent install target must be skills-sh, codex, or claude");
+    if (requested !== "skills-sh") {
+      throw new Error("agent install target must be skills-sh");
     }
     await installSkill(root, target);
     return output(
@@ -1485,6 +1526,7 @@ const RISKS = ["low", "medium", "high"] as const;
 const EDGE_TYPES = ["requires", "unblocks", "supersedes", "related"] as const;
 const FINDING_STATUSES = ["open", "resolved", "promoted", "dismissed"] as const;
 const VERIFICATION_TYPES = ["command", "manual", "url", "note"] as const;
+const MERGE_STRATEGIES = ["squash", "merge", "rebase"] as const;
 
 function mapImportNode(
   raw: unknown,
@@ -1778,7 +1820,8 @@ async function importFindingsFromReport(
   if (findings.length === 0) throw new Error("Report must include a non-empty findings array");
   const imported = [];
   for (const [index, raw] of findings.entries()) {
-    const severity = stringAt(raw, "severity") ?? "P2";
+    const severity = stringAt(raw, "severity");
+    if (!severity) throw new Error(`findings[${index}].severity is required`);
     if (!isPriority(severity))
       throw new Error(`findings[${index}].severity must be P0, P1, P2, or P3`);
     const title = stringAt(raw, "title");
@@ -1850,20 +1893,28 @@ async function pathExists(filePath: string): Promise<boolean> {
 function parseArgs(argv: string[]): ParsedArgs {
   const command: string[] = [];
   const options: Record<string, string | string[] | boolean> = {};
+  const repeatableOptions = new Set(["project", "verify", "audit-focus", "repo"]);
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (!arg) continue;
     if (arg.startsWith("--")) {
-      const key = arg.slice(2);
+      const [rawKey, inlineValue] = arg.slice(2).split(/=(.*)/s, 2);
+      const key = requiredArg(rawKey, "option name");
       const next = argv[i + 1];
-      if (next && !next.startsWith("-")) {
-        const current = options[key];
-        if (Array.isArray(current)) current.push(next);
-        else if (typeof current === "string") options[key] = [current, next];
-        else options[key] = next;
-        i += 1;
+      const hasInlineValue = inlineValue !== undefined;
+      const value = hasInlineValue ? inlineValue : next && !next.startsWith("-") ? next : true;
+      if (!hasInlineValue && value !== true) i += 1;
+
+      const current = options[key];
+      if (current !== undefined && !repeatableOptions.has(key)) {
+        throw new Error(`Option --${key} cannot be repeated`);
+      }
+      if (repeatableOptions.has(key)) {
+        if (Array.isArray(current)) current.push(String(value));
+        else if (typeof current === "string") options[key] = [current, String(value)];
+        else options[key] = [String(value)];
       } else {
-        options[key] = true;
+        options[key] = value;
       }
     } else {
       command.push(arg);
@@ -2009,6 +2060,16 @@ function strictOptionalEnum<T extends string>(
   return value;
 }
 
+function strictEnum<T extends string>(
+  value: string,
+  isValue: (candidate: string) => candidate is T,
+  label: string,
+): T {
+  if (!isValue(value))
+    throw new Error(`${label} must be one of ${validValuesFor(isValue).join(", ")}`);
+  return value;
+}
+
 function validValuesFor(isValue: (candidate: string) => boolean): readonly string[] {
   if (isValue === isNodeKind) return NODE_KINDS;
   if (isValue === isNodeStatus) return NODE_STATUSES;
@@ -2016,6 +2077,7 @@ function validValuesFor(isValue: (candidate: string) => boolean): readonly strin
   if (isValue === isRisk) return RISKS;
   if (isValue === isEdgeType) return EDGE_TYPES;
   if (isValue === isFindingStatus) return FINDING_STATUSES;
+  if (isValue === isMergeStrategy) return MERGE_STRATEGIES;
   return [];
 }
 
@@ -2046,6 +2108,10 @@ function isEdgeType(value: string): value is EdgeType {
 
 function isFindingStatus(value: string): value is FindingStatus {
   return (FINDING_STATUSES as readonly string[]).includes(value);
+}
+
+function isMergeStrategy(value: string): value is QdConfig["mergeStrategy"] {
+  return (MERGE_STRATEGIES as readonly string[]).includes(value);
 }
 
 function isVerificationType(value: string): value is VerificationEntry["type"] {
@@ -2278,6 +2344,7 @@ Audit:
   qd gate <node>
   qd check run <node>
   qd ci run <node>
+  qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)
 
 Viewer:
   qd view [--port 5173]`;

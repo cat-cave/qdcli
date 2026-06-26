@@ -10,6 +10,12 @@ qd status --json
 qd ready --json
 qd node list --json
 qd node show <id> --json
+qd node show <id> --full --json
+qd gate <id> --json
+qd finding list --open --severity P0,P1 --json
+qd promote-findings <id> --json
+qd advance <id> --summary "<summary>" --json
+qd diff <id> --self-only --base main --json
 qd milestone status --json
 qd velocity --json
 qd critical-path --json
@@ -43,3 +49,27 @@ interface QdPromptV1 {
 ```
 
 Commands that already return a single domain object or array, such as `qd ready --json`, keep that native shape. Prefer `qd snapshot --json` when an orchestrator needs a lean one-call summary instead of repeatedly loading the full graph.
+
+`qd promote-findings <id> --json` returns the source finding id, new node id, and created node:
+
+```ts
+interface QdPromoteFindingsResult {
+  promoted: Array<{
+    findingId: string;
+    newNodeId: string;
+    node: QdNode;
+  }>;
+}
+```
+
+`qd advance <id> --json` returns a step summary and the node state where the lifecycle stopped:
+
+```ts
+interface QdAdvanceResult {
+  ok: boolean;
+  stoppedAt: string;
+  nextAction: string | null;
+  steps: Array<{ step: string; ok: boolean; detail?: unknown }>;
+  node: QdNode;
+}
+```

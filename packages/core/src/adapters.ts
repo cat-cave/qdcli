@@ -57,7 +57,8 @@ export function adaptRoadmapHtml(content: string): AdapterOutput {
     });
     for (const dep of deps) edges.push({ from_node: slugify(dep), to_node: id, type: "requires" });
   }
-  return { nodes, edges: filterEdgesToKnownNodes(nodes, edges) };
+  assertEdgesReferenceKnownNodes(nodes, edges);
+  return { nodes, edges };
 }
 
 export function adaptMarkdownChecklist(content: string): AdapterOutput {
@@ -103,7 +104,8 @@ export function adaptMarkdownChecklist(content: string): AdapterOutput {
       current.spec = current.spec === current.title ? detail : `${current.spec}\n${detail}`;
     }
   }
-  return { nodes, edges: filterEdgesToKnownNodes(nodes, edges) };
+  assertEdgesReferenceKnownNodes(nodes, edges);
+  return { nodes, edges };
 }
 
 function nearestContainerStart(content: string, headingStart: number): number {
@@ -160,9 +162,16 @@ function firstTagText(segment: string, tag: string): string | undefined {
     ?.text;
 }
 
-function filterEdgesToKnownNodes(nodes: AdapterNode[], edges: AdapterEdge[]): AdapterEdge[] {
+function assertEdgesReferenceKnownNodes(nodes: AdapterNode[], edges: AdapterEdge[]): void {
   const nodeIds = new Set(nodes.map((node) => node.id));
-  return edges.filter((edge) => nodeIds.has(edge.from_node) && nodeIds.has(edge.to_node));
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.from_node)) {
+      throw new Error(`adapter dependency references unknown node: ${edge.from_node}`);
+    }
+    if (!nodeIds.has(edge.to_node)) {
+      throw new Error(`adapter dependency references unknown node: ${edge.to_node}`);
+    }
+  }
 }
 
 function splitRefs(value: string): string[] {

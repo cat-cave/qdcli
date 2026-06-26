@@ -50,4 +50,36 @@ describe("import adapters", () => {
       { from_node: "bootstrap-runtime", to_node: "wire-agent", type: "requires" },
     ]);
   });
+
+  it("fails when roadmap html dependencies reference unknown nodes", () => {
+    expect(() =>
+      adaptImportSource(
+        "roadmap-html",
+        `
+        <section>
+          <h3>Wire Agent</h3>
+          <span class="dep">Missing Runtime</span>
+          <p class="goal">Connect the agent.</p>
+          <ul><li>Agent responds</li></ul>
+        </section>
+      `,
+      ),
+    ).toThrow(/unknown node: missing-runtime/);
+  });
+
+  it("fails when markdown dependencies reference unknown nodes", () => {
+    expect(() =>
+      adaptImportSource(
+        "markdown-checklist",
+        `
+        - [ ] Wire Agent
+          - depends on: Missing Runtime
+      `,
+      ),
+    ).toThrow(/unknown node: missing-runtime/);
+  });
+
+  it("rejects unknown adapters", () => {
+    expect(() => adaptImportSource("unknown" as never, "")).toThrow(/Unknown import adapter/);
+  });
 });

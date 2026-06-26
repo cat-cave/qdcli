@@ -42,17 +42,25 @@ export async function resolveProjectRoot(
   options: {
     cwd?: string;
     root?: string;
+    allowMissing?: boolean;
   } = {},
 ): Promise<string> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const explicitRoot = options.root ?? process.env.QD_ROOT;
-  if (explicitRoot) return path.resolve(cwd, explicitRoot);
+  if (explicitRoot) {
+    const root = path.resolve(cwd, explicitRoot);
+    if (options.allowMissing || (await isDirectory(path.join(root, ".qd")))) return root;
+    throw new Error(`No qd project found at ${root}. Run qd setup there first.`);
+  }
 
   let current = cwd;
   while (true) {
     if (await isDirectory(path.join(current, ".qd"))) return current;
     const parent = path.dirname(current);
-    if (parent === current) return cwd;
+    if (parent === current) {
+      if (options.allowMissing) return cwd;
+      throw new Error("No qd project found. Run qd setup, pass --root, or set QD_ROOT.");
+    }
     current = parent;
   }
 }
@@ -229,7 +237,6 @@ require_ci_before_merge = ${config.requireCiBeforeMerge}
 
 export async function openDatabase(root = process.cwd()): Promise<Database> {
   const paths = getProjectPaths(root);
-  await mkdir(paths.qdDir, { recursive: true });
   const db = await connect(paths.dbPath);
   await exec(db, "pragma foreign_keys = on");
   return db;

@@ -258,4 +258,16 @@ describe("graph lifecycle", () => {
     await expect(resolveProjectRoot({ cwd: nested })).resolves.toBe(root);
     await expect(resolveProjectRoot({ cwd: nested, root })).resolves.toBe(root);
   });
+
+  it("fails loudly when no qd root is present unless missing roots are allowed", async () => {
+    const emptyRoot = await mkdtemp(path.join(os.tmpdir(), "qdcli-empty-"));
+    try {
+      await expect(resolveProjectRoot({ cwd: emptyRoot })).rejects.toThrow(/No qd project/);
+      await expect(resolveProjectRoot({ cwd: emptyRoot, allowMissing: true })).resolves.toBe(
+        emptyRoot,
+      );
+    } finally {
+      await rm(emptyRoot, { recursive: true, force: true });
+    }
+  });
 });

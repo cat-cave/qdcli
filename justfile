@@ -33,5 +33,11 @@ ci:
 pack:
   corepack pnpm exec vp run pack
 
+npm-smoke:
+  ./scripts/validate-npm-package.sh
+
+mutation:
+  corepack pnpm exec stryker run
+
 view *ARGS:
   corepack pnpm exec vp run @qdcli/viewer#dev -- {{ARGS}}

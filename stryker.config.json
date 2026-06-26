@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "plugins": ["@stryker-mutator/vitest-runner", "@stryker-mutator/typescript-checker"],
+  "packageManager": "pnpm",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.ts",
+    "related": true
+  },
+  "checkers": ["typescript"],
+  "typescriptChecker": {
+    "prioritizePerformanceOverAccuracy": false
+  },
+  "tsconfigFile": "tsconfig.json",
+  "mutate": [
+    "packages/core/src/**/*.ts",
+    "!packages/core/src/**/*.test.ts",
+    "!packages/core/src/index.ts"
+  ],
+  "reporters": ["clear-text", "progress", "html"],
+  "coverageAnalysis": "perTest",
+  "thresholds": {
+    "high": 60,
+    "low": 50,
+    "break": 45
+  },
+  "concurrency": "50%",
+  "timeoutMS": 10000
+}

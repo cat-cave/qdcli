@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { AnalyticsReport, GraphSnapshot, QdNode } from "@qdcli/core";
+import type { AnalyticsReport, GraphSnapshot, QdNode } from "@cat-cave/qdcli-core";
 import "./styles.css";
 
 function App() {

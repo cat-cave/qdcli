@@ -21,6 +21,49 @@ Nodes are executable specs. They include title, kind, typed milestone, group, pr
 
 If groups, projects, or milestones have been registered, qd validates node values against those registries. This lets a project define strict scheduling lanes, product areas, and milestone ranks without hard-coding one universal taxonomy.
 
+Minimal one-node JSON for `qd node add --from-json <file>`:
+
+```json
+{
+  "id": "docs-audit",
+  "title": "Audit documentation setup path",
+  "kind": "docs",
+  "status": "ready",
+  "priority": "P2",
+  "risk": "low",
+  "estimatePoints": 1,
+  "spec": "Review setup docs for a first-time adopter.",
+  "acceptance": "The docs explain install, setup, checks, CI, and first node orchestration.",
+  "verification": [{ "type": "manual", "value": "Read README and docs/setup.md end to end." }],
+  "auditFocus": [
+    "Look for language-specific assumptions.",
+    "Check qd merge semantics are explicit."
+  ]
+}
+```
+
+Bulk mint plan for `qd nodes add-bulk --from-json <file>`:
+
+```json
+{
+  "nodes": [
+    {
+      "id": "core-setup",
+      "title": "Initialize qd setup",
+      "spec": "Configure qd for this repository.",
+      "acceptance": "qd doctor passes after check and CI commands are configured."
+    },
+    {
+      "id": "first-feature",
+      "title": "Implement first feature",
+      "spec": "Deliver the first scoped feature.",
+      "acceptance": "The feature passes the configured CI gate."
+    }
+  ],
+  "edges": [{ "from": "core-setup", "to": "first-feature", "type": "requires" }]
+}
+```
+
 ## Edges
 
 Edges connect nodes. Only `requires` edges participate in readiness.
@@ -43,6 +86,29 @@ Findings belong to a node and can be P0, P1, P2, or P3.
 - P2/P3 can be promoted into future nodes after the gate passes.
 
 Structured audit reports can be imported with `qd finding add --from-report <file>`. The report must contain `nodeId` or `node_id` unless the node id is passed positionally, plus a `findings` array with severity, title, evidence, and optional path, line, expected, and suggested fix fields.
+
+Minimal audit report:
+
+```json
+{
+  "nodeId": "first-feature",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Acceptance criterion is not implemented",
+      "evidence": "The required behavior is absent from the tested workflow.",
+      "expected": "The acceptance criterion passes under the configured check command.",
+      "suggestedFix": "Implement the missing behavior and rerun qd gate."
+    },
+    {
+      "severity": "P2",
+      "title": "Add a regression test",
+      "evidence": "The behavior works manually but lacks automated coverage.",
+      "suggested_fix": "Promote this into a follow-up test node."
+    }
+  ]
+}
+```
 
 ## Enums
 

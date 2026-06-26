@@ -4,12 +4,35 @@ Install qd, install the agent skills, initialize your repository, then verify th
 
 ## 1. Install the CLI
 
-Install Vite+ first:
+Use the npm package when you want the quickest install:
+
+```sh
+pnpm dlx @cat-cave/qdcli --help
+pnpm dlx @cat-cave/qdcli setup --print-agent-url
+```
+
+Equivalent one-shot runners:
+
+```sh
+npx @cat-cave/qdcli --help
+bunx @cat-cave/qdcli --help
+```
+
+Or install globally:
+
+```sh
+npm install -g @cat-cave/qdcli
+qd --version
+```
+
+For qdcli development from source, install Vite+ first:
 
 ```sh
 curl -fsSL https://vite.plus | bash
 vp help
 ```
+
+Vite+ is not required for normal npm package usage.
 
 On NixOS, nix-darwin, or Home Manager, install the packaged CLI directly:
 
@@ -115,6 +138,16 @@ Use the repository's real commands. qd is language- and stack-neutral.
 `ci_command` is the full trusted merge gate. It runs when the orchestrator calls `qd ci run <node>`. A passed CI run moves the node to `mergeable`; a failed run blocks it. The intended policy is green main: if CI does not pass, the node does not merge.
 
 For qdcli itself, `vp run ci` is the full green command; other projects should configure their own equivalent.
+
+After qd state changes that should be shared, export and commit the portable DAG snapshot:
+
+```sh
+qd export --out roadmap/spec-dag.json
+git add roadmap/spec-dag.json
+git commit -m "Update qd DAG"
+```
+
+Do this after planned DAG edits, imported roadmaps, finding promotion, and merge-state recording when another clone, machine, or orchestrator needs the updated state.
 
 ## 4. Verify it works
 
@@ -234,11 +267,13 @@ Workspace roll-up does not claim nodes, write findings, run CI, or merge. The or
 
 ## 8. View the DAG
 
-Start the Vite viewer:
+Start the Vite viewer from a qdcli source checkout:
 
 ```sh
 qd view
 ```
+
+Installed npm/Nix binaries currently support DAG commands; `qd view` requires running from the qdcli source checkout until viewer assets are shipped with the installed CLI.
 
 The first viewer should be read-only and focused on:
 

@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   addEdge,
+  addFinding,
   addNode,
+  ciPass,
+  markMerged,
   setupProject,
   workspaceGraph,
   workspaceReady,
@@ -32,12 +35,24 @@ afterEach(async () => {
 
 describe("workspace roll-up", () => {
   it("summarizes multiple repo DAGs", async () => {
+    await ciPass(repoA, "a-1");
+    await markMerged(repoA, "a-1", "squash");
+    await addFinding(repoB, "b-1", {
+      severity: "P1",
+      title: "Blocking issue",
+      evidence: "The node has a blocking audit finding.",
+    });
+
     const status = await workspaceStatus({ configPath });
 
     expect(status.ok).toBe(true);
     expect(status.totals.repos).toBe(2);
     expect(status.totals.nodes).toBe(4);
     expect(status.totals.ready).toBe(2);
+    expect(status.totals.donePoints).toBe(1);
+    expect(status.totals.totalPoints).toBe(4);
+    expect(status.totals.remainingPoints).toBe(3);
+    expect(status.totals.openP0P1Findings).toBe(1);
   });
 
   it("returns ready nodes tagged by repo", async () => {
@@ -64,6 +79,18 @@ describe("workspace roll-up", () => {
 
     expect(status.ok).toBe(false);
     expect(status.repos[1]?.errors[0]).toMatch(/Missing qd database/);
+  });
+
+  it("rejects duplicate workspace repos", async () => {
+    await writeFile(configPath, `repos = ["${repoA}", "${repoA}"]\n`, "utf8");
+
+    await expect(workspaceStatus({ configPath })).rejects.toThrow(/Duplicate workspace repo/);
+  });
+
+  it("rejects workspace configs without repos", async () => {
+    await writeFile(configPath, "repos = []\n", "utf8");
+
+    await expect(workspaceStatus({ configPath })).rejects.toThrow(/at least one repo/);
   });
 });
 
