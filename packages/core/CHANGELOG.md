@@ -1,5 +1,11 @@
 # @cat-cave/qdcli-core
 
+## 0.1.8
+
+### Patch Changes
+
+- Ship the qd graph viewer as an embedded part of the installed CLI and serve it through `qd view` without requiring a qdcli source checkout.
+
 ## 0.1.7
 
 ### Patch Changes

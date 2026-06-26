@@ -173,7 +173,7 @@ qd ready
 - graph has no cycles
 - every non-draft node has acceptance criteria
 
-An installed CLI may report `runtime.viewer = "source-checkout-only"`; that is expected unless you are running from the qdcli source checkout. Empty `check_command` or `ci_command` values are setup warnings. Configure them before starting real orchestration.
+An installed CLI should report `runtime.viewer = "embedded"`. Empty `check_command` or `ci_command` values are setup warnings. Configure them before starting real orchestration.
 
 ## 5. Hand off to an agent
 
@@ -274,15 +274,15 @@ Workspace roll-up does not claim nodes, write findings, run CI, or merge. The or
 
 ## 8. View the DAG
 
-Start the Vite viewer from a qdcli source checkout:
+Start the installed read-only viewer:
 
 ```sh
 qd view
 ```
 
-Installed npm/Nix binaries currently support DAG commands; `qd view` requires running from the qdcli source checkout until viewer assets are shipped with the installed CLI.
+`qd view` serves an embedded local dashboard at `http://127.0.0.1:5173` by default. Use `qd view --port <n>` to choose a different port, `qd view --open` to launch a browser, and `qd view --check --json` to verify packaged viewer assets in automation.
 
-The first viewer should be read-only and focused on:
+The viewer is read-only and focused on:
 
 - DAG topology
 - ready queue

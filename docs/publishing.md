@@ -56,7 +56,7 @@ nix develop -c just release-push
 
 `just release-version` runs `changeset version` and refreshes the pnpm lockfile. `just release-tag` commits the generated package version/changelog changes and creates `v<@cat-cave/qdcli version>`. `just release-push` pushes `main` and the exact version tag, which triggers `.github/workflows/publish.yml`.
 
-The core and CLI packages are configured as a fixed Changesets group, so they version together. The private viewer package is ignored for publishing.
+The core and CLI packages are configured as a fixed Changesets group, so they version together. The viewer app remains a private workspace package, but its built static assets are embedded into the published CLI package.
 
 ## Manual Publish
 

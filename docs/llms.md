@@ -250,7 +250,7 @@ qd view
 
 These show ready work, completed points, remaining points, velocity, critical path, and ETA.
 
-`qd view` currently requires the qdcli source checkout. Installed npm/Nix binaries should use the JSON commands above until viewer assets are shipped with the installed CLI.
+`qd view` serves the embedded read-only dashboard from the installed CLI. Use it for human inspection, but keep all state changes in CLI commands so the DAG remains auditable.
 
 When audit context depends on branch diffs, prefer `qd diff <node> --self-only --base main` over ad hoc `main..branch` prompts. It uses the node's recorded branch and merge-base to avoid including unrelated movement from main.
 

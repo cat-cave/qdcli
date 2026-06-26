@@ -25,6 +25,7 @@
               ./apps
               ./docs
               ./packages
+              ./scripts
               ./package.json
               ./pnpm-lock.yaml
               ./pnpm-workspace.yaml
@@ -36,7 +37,7 @@
           };
           qd = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "qd";
-            version = "0.1.7";
+            version = "0.1.8";
 
             inherit src;
 
@@ -60,7 +61,7 @@
             buildPhase = ''
               runHook preBuild
 
-              pnpm exec vp run -r build
+              pnpm run build
 
               runHook postBuild
             '';
@@ -70,6 +71,7 @@
 
               install -Dm755 packages/cli/dist/index.mjs "$out/lib/qd/index.mjs"
               install -Dm644 packages/cli/package.json "$out/lib/qd/package.json"
+              cp -r packages/cli/dist/viewer "$out/lib/qd/viewer"
               mkdir -p "$out/lib/qd/node_modules/@cat-cave/qdcli-core"
               cp -r packages/core/dist packages/core/package.json "$out/lib/qd/node_modules/@cat-cave/qdcli-core/"
               mkdir -p "$out/lib/qd/node_modules/@tursodatabase"
@@ -92,6 +94,7 @@
               runHook preInstallCheck
 
               "$out/bin/qd" --version
+              "$out/bin/qd" view --check --json
               tmpdir="$(mktemp -d)"
               cd "$tmpdir"
               "$out/bin/qd" init --json

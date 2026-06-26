@@ -194,4 +194,4 @@ Unsupported providers fail loudly. Configure local commands with `ci_command` wh
 
 `qd setup` and `qd agent install skills-sh` work from installed binaries because the qd DAG skill is embedded in the CLI.
 
-`qd doctor --json` reports `runtime.viewer = "source-checkout-only"` when the CLI is installed without the qdcli monorepo. That is not an error; DAG commands remain available. `qd view` currently requires running from the qdcli source checkout because the Vite viewer assets are not shipped as a static installed asset yet.
+`qd doctor --json` reports `runtime.viewer = "embedded"` when the installed CLI includes the packaged dashboard. `qd view` serves that dashboard locally and exposes read-only `/api/graph` and `/api/analytics` endpoints backed by the current qd database.

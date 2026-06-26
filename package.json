@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vp run -r build",
+    "build": "vp run @cat-cave/qdcli-core#build && vp run @cat-cave/qdcli#build",
     "changeset": "changeset",
-    "ci": "vp run -r build && vp check && vp test run --coverage && vp run typecheck:tsgo",
+    "ci": "pnpm run build && vp check && vp test run --coverage && vp run typecheck:tsgo",
     "coverage": "vp test run --coverage",
     "dev:view": "vp run @qdcli/viewer#dev",
     "format": "vp fmt --write .",

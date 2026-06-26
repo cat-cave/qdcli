@@ -78,13 +78,13 @@ See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, d
 
 `qd merge` records qd state only. It does not run git or GitHub merges; keep using the repo's normal merge workflow and use qd to enforce the DAG, audit, and green-CI gate.
 
-When running from a qdcli source checkout, start the read-only viewer:
+Start the installed read-only viewer:
 
 ```sh
 qd view
 ```
 
-Installed npm/Nix binaries currently support the DAG commands; `qd view` requires the source checkout until viewer assets are shipped with the binary.
+`qd view` serves an embedded local dashboard at `http://127.0.0.1:5173` by default. It reads the same DAG database as the CLI and does not mutate project state.
 
 ## Agent Bootstrap
 

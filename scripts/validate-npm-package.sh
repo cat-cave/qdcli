@@ -16,6 +16,7 @@ expected_version="$(node -e 'console.log(require(process.argv[1] + "/packages/cl
 actual_version="$("$qd" --version)"
 test "$actual_version" = "$expected_version"
 printf '%s\n' "$actual_version"
+"$qd" view --check --json
 
 project="$tmpdir/project"
 mkdir -p "$project"

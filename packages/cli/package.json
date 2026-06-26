@@ -1,6 +1,6 @@
 {
   "name": "@cat-cave/qdcli",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Quick DAG CLI for agent-readable project orchestration",
   "license": "MIT",
   "repository": {
@@ -24,7 +24,7 @@
   },
   "scripts": {
     "prepack": "pnpm run build",
-    "build": "vp pack src/index.ts --format esm --dts --banner.js \"#!/usr/bin/env node\"",
+    "build": "node ../../scripts/build-cli-package.mjs",
     "typecheck": "vp exec tsgo --noEmit -p tsconfig.json",
     "typecheck:tsgo": "vp exec tsgo --noEmit -p tsconfig.json",
     "test": "vp test run"

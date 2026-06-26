@@ -7,6 +7,7 @@ coverage/
 reports/
 .stryker-tmp/
 .turbo/
+result
 *.log
 *.tsbuildinfo
 qdcli-*.tgz
