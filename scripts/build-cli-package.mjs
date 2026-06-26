@@ -12,6 +12,7 @@ const packageManager = process.env.npm_execpath
   ? { command: process.execPath, prefixArgs: [process.env.npm_execpath] }
   : { command: "pnpm", prefixArgs: [] };
 
+runPnpm(["--dir", repoRoot, "--filter", "@cat-cave/qdcli-core", "run", "build"]);
 runPnpm(["--dir", repoRoot, "--filter", "./apps/viewer", "run", "build"]);
 runPnpm([
   "--dir",

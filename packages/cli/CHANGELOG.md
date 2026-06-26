@@ -1,5 +1,13 @@
 # @cat-cave/qdcli
 
+## 0.1.9
+
+### Patch Changes
+
+- Make the CLI package build self-contained for publishing by building qdcli-core before embedding the viewer.
+- Updated dependencies
+  - @cat-cave/qdcli-core@0.1.9
+
 ## 0.1.8
 
 ### Patch Changes
