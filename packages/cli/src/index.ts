@@ -186,8 +186,10 @@ async function main(): Promise<void> {
         }),
         json,
       );
+    case "snapshot":
+      return snapshotCommand(root, args.options, json);
     case "prompt":
-      return promptCommand(root, action, extra);
+      return promptCommand(root, action, extra, json);
     case "agent":
       return agentCommand(root, action, extra, args.options, json);
     case "view":
@@ -268,6 +270,23 @@ async function validation(root: string, json: boolean): Promise<void> {
   const result = await validateGraph(root);
   output(result, json);
   if (!result.ok) process.exitCode = 1;
+}
+
+async function snapshotCommand(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const milestone = stringOpt(options.milestone) ?? null;
+  const graph = await graphSnapshot(root);
+  const result = {
+    schemaVersion: 1,
+    status: await stats(root),
+    ready: await readyNodes(root),
+    openFindings: graph.findings.filter((finding) => finding.status === "open"),
+    criticalPath: await criticalPathReport(root, milestone),
+  };
+  output(result, json);
 }
 
 async function nodeCommand(
@@ -692,12 +711,20 @@ async function promptCommand(
   root: string,
   action: string | undefined,
   id: string | undefined,
+  json: boolean,
 ): Promise<void> {
-  if (action === "implement" && id) {
-    console.log(promptText("implement", await getNode(root, id)));
+  const kind = action ?? "plan";
+  const node = kind === "implement" && id ? await getNode(root, id) : null;
+  const prompt = promptText(kind, node);
+  if (json) {
+    output({ schemaVersion: 1, kind, nodeId: id ?? null, node, prompt }, true);
     return;
   }
-  console.log(promptText(action ?? "plan"));
+  if (action === "implement" && id) {
+    console.log(prompt);
+    return;
+  }
+  console.log(prompt);
 }
 
 async function runConfiguredCheck(
@@ -1607,11 +1634,13 @@ Core:
   qd doctor [--json]
   qd status [--json]
   qd stats [--json] [--window 7] [--milestone <name>]
+  qd snapshot [--json] [--milestone <name>]
   qd ready [--json]
   qd graph --format table|json|mermaid|dot
   qd velocity [--window 7]
   qd critical-path [--milestone <name>]
   qd eta [--window 7] [--milestone <name>]
+  qd prompt plan|implement|audit|resolve [node] [--json]
   qd config show
   qd config get ci-command
   qd config set check-command --value "<fast project check command>"

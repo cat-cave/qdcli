@@ -7,6 +7,7 @@
 - `qd doctor [--json]`
 - `qd status [--json]`
 - `qd stats [--json] [--window 7] [--milestone <name>]`
+- `qd snapshot [--json] [--milestone <name>]`
 - `qd ready [--json]`
 - `qd graph --format table|json|mermaid|dot`
 - `qd import --from <json> [--schema-mapping <json>] [--dry-run] [--verbose]`
@@ -18,6 +19,7 @@
 - `qd config get <key>`
 - `qd config set check-command --value <command>`
 - `qd config set ci-command --value <command>`
+- `qd prompt plan|implement|audit|resolve [node] [--json]`
 
 Config read/write round trip:
 
@@ -25,6 +27,8 @@ Config read/write round trip:
 qd config set ci-command --value "<full project CI command>"
 qd config get ci-command
 ```
+
+For agent-facing JSON output, see [JSON Contract](./json.md).
 
 ## Import
 

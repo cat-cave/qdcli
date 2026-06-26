@@ -84,6 +84,8 @@ The default opinion is strict:
 
 Change these only when the repository genuinely needs a different operating model, and record why with \`qd node note <id> --text "..."\` or in project docs.
 
+Use \`qd snapshot --json\` when the orchestrator needs a compact state refresh with status, ready nodes, open findings, and critical path. Use \`qd prompt implement <id> --json\` when delegating so the subagent gets both the prompt text and structured node context.
+
 For mature projects, import existing DAG state instead of recreating it manually:
 
 \`\`\`sh

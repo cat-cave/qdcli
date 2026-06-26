@@ -58,6 +58,7 @@ Run:
 qd doctor --json
 qd status --json
 qd ready --json
+qd snapshot --json
 ```
 
 If `qd doctor` reports config or graph errors, fix those before delegating work.
@@ -112,8 +113,9 @@ The orchestrator loop:
 
 ```sh
 qd ready --json
+qd snapshot --json
 qd claim <node> --agent <subagent-name>
-qd prompt implement <node>
+qd prompt implement <node> --json
 ```
 
 Delegate the implementation prompt and project context to a subagent. When the subagent completes work, record it:
