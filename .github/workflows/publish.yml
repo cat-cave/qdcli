@@ -25,7 +25,13 @@ jobs:
       - run: nix develop -c just ci
       - run: nix develop -c just npm-smoke
       - run: mkdir -p dist-npm
-      - run: nix develop -c corepack pnpm --filter ./packages/core pack --pack-destination dist-npm
-      - run: npm publish dist-npm/cat-cave-qdcli-core-*.tgz --access public
-      - run: nix develop -c corepack pnpm --filter ./packages/cli pack --pack-destination dist-npm
-      - run: npm publish dist-npm/cat-cave-qdcli-*.tgz --access public
+      - run: nix develop -c corepack pnpm --filter ./packages/core pack --pack-destination "$GITHUB_WORKSPACE/dist-npm"
+      - run: |
+          CORE_TARBALL="$(find dist-npm -maxdepth 1 -name 'cat-cave-qdcli-core-*.tgz' -print -quit)"
+          test -n "$CORE_TARBALL"
+          npm publish "$CORE_TARBALL" --access public
+      - run: nix develop -c corepack pnpm --filter ./packages/cli pack --pack-destination "$GITHUB_WORKSPACE/dist-npm"
+      - run: |
+          CLI_TARBALL="$(find dist-npm -maxdepth 1 -name 'cat-cave-qdcli-*.tgz' ! -name 'cat-cave-qdcli-core-*.tgz' -print -quit)"
+          test -n "$CLI_TARBALL"
+          npm publish "$CLI_TARBALL" --access public

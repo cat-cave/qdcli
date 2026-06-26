@@ -2,6 +2,10 @@
 
 All notable qdcli changes are recorded here.
 
+## v0.1.4 - 2026-06-26
+
+- Fix Trusted Publishing tarball paths so workflow-packed npm artifacts are published from the repository workspace instead of an unresolved glob.
+
 ## v0.1.3 - 2026-06-26
 
 - Add adapter-based CI provider configuration and `qd ci poll` for GitHub Actions via the `gh` CLI.
