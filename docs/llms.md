@@ -198,9 +198,32 @@ For a clean happy path, `qd advance <node> --summary "<what changed>"` can run c
 
 `qd ci run` runs the configured `ci_command`, streams output, writes a log under `.qd/logs/`, records pass/fail, and moves the node to `mergeable` or `blocked`.
 
-`qd check run` runs the configured `check_command` or the node's `check_command` override. It records a check run and log, but it does not mark the node mergeable. If the check fails, qd blocks the node.
+`qd check run` runs the configured `check_command` or the node's `check_command` override. `qd ci run` uses the node's `ci_command` override when present, otherwise the configured `ci_command`. Checks record a run and log, but only CI marks a node mergeable.
 
 Do not record an external CI pass unless the full trusted gate already completed outside qd. Use `qd ci record-pass <node> --summary "..." --url <ci-url>` or another evidence flag.
+
+When a supported provider adapter is configured, use qd to wait for external CI instead of hand-written polling:
+
+```sh
+qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd ci poll <node> --sha <commit>
+```
+
+The GitHub adapter shells out to `gh`. Other providers should be added as adapters, not as assumptions baked into the DAG model. If no adapter exists, use explicit evidence with `qd ci record-pass` or run the trusted command through `qd ci run`.
+
+For manual verification gates declared on a node, record the signoff:
+
+```sh
+qd verification sign-off <node> --type manual --note "<what was checked>" --evidence <path-or-url>
+```
+
+For clean structured audits, prefer the composite:
+
+```sh
+qd audit pass <node> --from-report <audit-report.json>
+```
+
+It imports findings, fails on open P0/P1 findings, and promotes P2/P3 findings when the current node is clean.
 
 `qd merge` records the merge only after qd confirms:
 
@@ -208,7 +231,7 @@ Do not record an external CI pass unless the full trusted gate already completed
 - node is `mergeable`
 - latest CI run passed, when `require_ci_before_merge = true`
 
-`qd merge` does not perform a git merge, squash, rebase, push, or GitHub PR operation. The orchestrator should use the repo's normal merge workflow for git state, and use `qd merge` to record that the node cleared qd's gate. Keep main green; do not use qd to excuse a known-bad merge.
+`qd merge` does not perform a git merge, squash, rebase, push, or GitHub PR operation. The orchestrator should use the repo's normal merge workflow for git state, and use `qd merge` to record that the node cleared qd's gate. In direct-to-main workflows, run `qd merge <node> --use-existing-commit <sha>` after the real merge so qd can record the commit it represents. Keep main green; do not use qd to excuse a known-bad merge.
 
 ## Inspect Progress
 
@@ -221,6 +244,7 @@ qd velocity --window 7
 qd critical-path
 qd eta
 qd milestone status --milestone "<name>"
+qd export --status ready,claimed,review --milestone "<name>" --json
 qd view
 ```
 

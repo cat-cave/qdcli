@@ -137,7 +137,14 @@ Use the repository's real commands. qd is language- and stack-neutral.
 
 `ci_command` is the full trusted merge gate. It runs when the orchestrator calls `qd ci run <node>`. A passed CI run moves the node to `mergeable`; a failed run blocks it. The intended policy is green main: if CI does not pass, the node does not merge.
 
-For qdcli itself, `vp run ci` is the full green command; other projects should configure their own equivalent.
+If the repository uses a supported hosted CI adapter, configure it separately from local commands. The first built-in adapter is GitHub through the `gh` CLI:
+
+```sh
+qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd config get ci-provider
+```
+
+Provider polling is optional. If no adapter fits the project, keep using `qd ci run` for local trusted CI or `qd ci record-pass` with explicit evidence for externally completed CI.
 
 After qd state changes that should be shared, export and commit the portable DAG snapshot:
 

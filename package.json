@@ -1,11 +1,11 @@
 {
   "name": "qdcli-workspace",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vp run -r build",
-    "ci": "vp check && vp test run --coverage && vp run typecheck:tsgo && vp run -r build",
+    "ci": "vp run -r build && vp check && vp test run --coverage && vp run typecheck:tsgo",
     "coverage": "vp test run --coverage",
     "dev:view": "vp run @qdcli/viewer#dev",
     "format": "vp fmt --write .",

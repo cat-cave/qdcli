@@ -1,4 +1,8 @@
-export function promptText(kind: string, node?: unknown): string {
+export function promptText(
+  kind: string,
+  node?: unknown,
+  extras: { projectRules?: string; auditDiffCommand?: string } = {},
+): string {
   if (kind === "plan") {
     return `Build a qd DAG from mergeable, acceptance-driven nodes.
 
@@ -19,7 +23,11 @@ Create structured findings:
 - P2: non-blocking follow-up that should become a new node.
 - P3: polish or future improvement.
 
-Use qd finding add for each issue. P0/P1 block qd gate.`;
+Use qd finding add for each issue. P0/P1 block qd gate.
+${extras.auditDiffCommand ? `\nDiff command:\n${extras.auditDiffCommand}\n` : ""}
+${extras.projectRules ? `\nProject rules:\n${extras.projectRules.trim()}\n` : ""}
+Node context:
+${node ? JSON.stringify(node, null, 2) : "Run qd prompt audit <node> for node-specific context."}`;
   }
 
   if (kind === "resolve") {
@@ -41,6 +49,7 @@ Protocol:
 - Use the node spec and acceptance as the scope boundary.
 - Record completion with qd complete.
 - Prefer --json when parsing command output.
+${extras.projectRules ? `\nProject rules:\n${extras.projectRules.trim()}\n` : ""}
 
 Node context:
 ${node ? JSON.stringify(node, null, 2) : "Run qd prompt implement <node> for node-specific context."}`;
@@ -71,10 +80,13 @@ During setup, configure qd for the repository's real definition of green:
 qd config set check-command --value "<fast project check command>"
 qd config set ci-command --value "<full project CI command>"
 qd config set merge-strategy --value "squash"
+qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
 qd config get ci-command
 \`\`\`
 
-\`check_command\` is the faster preflight used by \`qd check run\`; it records evidence but does not make a node mergeable. \`ci_command\` is the full trusted gate used by \`qd ci run\`; a pass makes the node mergeable. Good CI commands run the checks the repository actually trusts before merge. Weak commands make the DAG look healthier than the project really is.
+\`check_command\` is the faster preflight used by \`qd check run\`; it records evidence but does not make a node mergeable. \`ci_command\` is the full trusted gate used by \`qd ci run\`; a pass makes the node mergeable. Node-level \`check_command\` and \`ci_command\` overrides are for scoped checks that are still honest for that node. Good CI commands run the checks the repository actually trusts before merge. Weak commands make the DAG look healthier than the project really is.
+
+Provider polling is adapter-based. GitHub via the \`gh\` CLI is one adapter, not a qd worldview. If a repository uses another provider, use \`qd ci run\` or \`qd ci record-pass\` with evidence until a provider adapter exists.
 
 The default opinion is strict:
 
@@ -132,13 +144,14 @@ qd milestone register --name "baseline" --rank 10
 3. Each delegated node is claimed with \`qd claim <id> --agent <name>\` so ownership is visible.
 4. Implementation subagents receive \`qd prompt implement <id>\` plus any project-specific context.
 5. The orchestrator records completion with \`qd complete <id> --summary "..."\`.
-6. Audit subagents review the completed node and the orchestrator records structured findings.
+6. Audit subagents review the completed node and the orchestrator records structured findings, preferably with \`qd audit pass <id> --from-report <file>\`.
 7. P0/P1 findings are resolved before checks. P2/P3 findings are promoted after the current node passes the gate.
-8. The orchestrator runs \`qd check run <id>\` when a fast local preflight is useful.
-9. The orchestrator runs \`qd ci run <id>\` for the full merge gate; \`qd ci record-pass\` is only for recording an externally completed CI check with evidence.
-10. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses \`qd merge <id>\` only after qd marks the node mergeable.
+8. Manual verification gates are signed off with \`qd verification sign-off\` when the node declares them.
+9. The orchestrator runs \`qd check run <id>\` when a fast local preflight is useful.
+10. The orchestrator runs \`qd ci run <id>\` or \`qd ci poll <id>\` for the full merge gate; \`qd ci record-pass\` is only for recording an externally completed CI check with evidence.
+11. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses \`qd merge <id>\` only after qd marks the node mergeable.
 
-\`qd merge\` records qd state only. It does not run \`git merge\`, squash commits, rebase, push, or open/merge a GitHub PR.
+\`qd merge\` records qd state only. It does not run \`git merge\`, squash commits, rebase, push, or open/merge a GitHub PR. For direct-to-main workflows, use \`qd merge <id> --use-existing-commit <sha>\` after the real merge so qd records the commit it represents.
 
 \`qd advance <id> --summary "..." \` can collapse the clean path through completion, gate, check, and CI. Add \`--merge\` only when it is correct to record qd's merge state.
 

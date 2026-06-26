@@ -151,8 +151,15 @@ qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
 - `qd gate <node>`
 - `qd check run <node>`
 - `qd ci run <node>`
+- `qd ci poll <node> [--sha <commit>]`
+- `qd audit pass <node> --from-report <audit-report.json>`
+- `qd verification sign-off <node> --type manual --note <text> [--evidence <path>]`
 
 `qd promote-findings` prints `{ "promoted": [...] }` with the source finding id and new node id. It refuses while P0/P1 findings are open and includes the blocking finding ids and titles in the error.
+
+`qd audit pass` is the clean audit composite: it imports a structured audit report, fails with `auditNotClean` if P0/P1 findings remain open, and promotes P2/P3 findings into future nodes when the current node is clean.
+
+Manual verification should be declared on the node with `--verify type=manual,value="..."`. Use `qd verification sign-off` to record that the declared manual gate was checked, with evidence when available. qd records the signoff as a node note and status reason entry.
 
 ## Advance And Diff
 
@@ -160,14 +167,28 @@ qd workspace status --repo /path/to/repo-a --repo /path/to/repo-b --json
 
 `qd diff <node> --self-only --base main` prints a diff from the node branch's merge-base with `main` to the node branch. This is useful when audit subagents need the branch's own change set without unrelated movement from an ahead main branch.
 
+`qd export --status ready,claimed,review --milestone alpha --json` prints a filtered canonical export for session resume and status handoff. Filtering preserves only matching nodes and their matching edges, runs, findings, and notes.
+
 ## Lifecycle
 
 - `qd ci start <node> --cmd <command>`
 - `qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)`
 - `qd ci fail <node>`
-- `qd merge <node> --strategy squash`
+- `qd ci poll <node> [--provider github] [--repo owner/name] [--workflow ci.yml] [--sha <commit>]`
+- `qd merge <node> --strategy squash [--use-existing-commit <sha>]`
 
 `qd merge` is a qd state transition, not a git operation and not a GitHub PR operation. It records a merge run and marks the node `done` only after qd confirms the node is mergeable, P0/P1 findings are closed, and the latest CI passed when `require_ci_before_merge = true`. Do the actual git merge, squash, rebase, or PR merge in your normal repo workflow before or around this command.
+
+For direct-to-main or external merge workflows, pass `--use-existing-commit <sha>` after the real merge has happened. qd stores that commit in the merge run summary so later `qd ci poll` can infer which commit to watch.
+
+Provider polling is adapter-based. The first adapter is GitHub through the `gh` CLI:
+
+```sh
+qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd ci poll <node> --sha <commit>
+```
+
+Unsupported providers fail loudly. Configure local commands with `ci_command` when a provider adapter is not available.
 
 ## Installed CLI Notes
 

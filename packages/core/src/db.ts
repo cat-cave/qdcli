@@ -19,6 +19,10 @@ export interface QdConfig {
   skillsDir: string;
   checkCommand: string;
   ciCommand: string;
+  ciProvider: "none" | "github";
+  ciRepo: string;
+  ciWorkflow: string;
+  ciAuth: "gh-cli";
   mergeStrategy: "squash" | "merge" | "rebase";
   requireCleanWorktree: boolean;
   cleanWorktreeExcept: string[];
@@ -31,6 +35,10 @@ export const defaultConfig: QdConfig = {
   skillsDir: ".qd/skills",
   checkCommand: "",
   ciCommand: "",
+  ciProvider: "none",
+  ciRepo: "",
+  ciWorkflow: "",
+  ciAuth: "gh-cli",
   mergeStrategy: "squash",
   requireCleanWorktree: true,
   cleanWorktreeExcept: [".qd/"],
@@ -100,6 +108,10 @@ schema_version = 1
 skills_dir = ".qd/skills"
 check_command = ""
 ci_command = ""
+ci_provider = "none"
+ci_repo = ""
+ci_workflow = ""
+ci_auth = "gh-cli"
 merge_strategy = "squash"
 require_clean_worktree = true
 clean_worktree_except = [".qd/"]
@@ -142,6 +154,10 @@ export function parseConfig(content: string): QdConfig {
     "skills_dir",
     "check_command",
     "ci_command",
+    "ci_provider",
+    "ci_repo",
+    "ci_workflow",
+    "ci_auth",
     "merge_strategy",
     "require_clean_worktree",
     "clean_worktree_except",
@@ -165,6 +181,10 @@ export function parseConfig(content: string): QdConfig {
     skillsDir: requiredStringValue(values, "skills_dir"),
     checkCommand: requiredStringValue(values, "check_command", true),
     ciCommand: requiredStringValue(values, "ci_command", true),
+    ciProvider: requiredCiProviderValue(values, "ci_provider"),
+    ciRepo: requiredStringValue(values, "ci_repo", true),
+    ciWorkflow: requiredStringValue(values, "ci_workflow", true),
+    ciAuth: requiredCiAuthValue(values, "ci_auth"),
     mergeStrategy: requiredMergeStrategyValue(values, "merge_strategy"),
     requireCleanWorktree: requiredBooleanValue(values, "require_clean_worktree"),
     cleanWorktreeExcept: requiredStringArrayValue(values, "clean_worktree_except"),
@@ -214,6 +234,21 @@ function requiredMergeStrategyValue(
   throw new Error(`${key} must be squash, merge, or rebase`);
 }
 
+function requiredCiProviderValue(
+  values: Record<string, unknown>,
+  key: string,
+): QdConfig["ciProvider"] {
+  const value = values[key];
+  if (value === "none" || value === "github") return value;
+  throw new Error(`${key} must be none or github`);
+}
+
+function requiredCiAuthValue(values: Record<string, unknown>, key: string): QdConfig["ciAuth"] {
+  const value = values[key];
+  if (value === "gh-cli") return value;
+  throw new Error(`${key} must be gh-cli`);
+}
+
 export async function writeConfig(root: string, config: QdConfig): Promise<void> {
   const paths = getProjectPaths(root);
   await mkdir(paths.qdDir, { recursive: true });
@@ -227,6 +262,10 @@ schema_version = ${config.schemaVersion}
 skills_dir = "${config.skillsDir}"
 check_command = "${escapeTomlString(config.checkCommand)}"
 ci_command = "${escapeTomlString(config.ciCommand)}"
+ci_provider = "${config.ciProvider}"
+ci_repo = "${escapeTomlString(config.ciRepo)}"
+ci_workflow = "${escapeTomlString(config.ciWorkflow)}"
+ci_auth = "${config.ciAuth}"
 merge_strategy = "${config.mergeStrategy}"
 require_clean_worktree = ${config.requireCleanWorktree}
 clean_worktree_except = [${config.cleanWorktreeExcept.map((item) => `"${escapeTomlString(item)}"`).join(", ")}]

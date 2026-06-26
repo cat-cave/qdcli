@@ -258,6 +258,71 @@ describe("graph lifecycle", () => {
     await expect(markMerged(root, "a", "squash")).rejects.toThrow(/status ready/);
   });
 
+  it("persists per-node check and CI command overrides", async () => {
+    const created = await addNode(root, {
+      id: "a",
+      title: "Build A",
+      spec: "Do A",
+      acceptance: "A works",
+      checkCommand: "just check-a",
+      ciCommand: "just ci-a",
+    });
+
+    expect(created.check_command).toBe("just check-a");
+    expect(created.ci_command).toBe("just ci-a");
+
+    const updated = await updateNode(root, "a", {
+      check_command: "just check-b",
+      ci_command: "just ci-b",
+    });
+
+    expect(updated.check_command).toBe("just check-b");
+    expect(updated.ci_command).toBe("just ci-b");
+  });
+
+  it("records the external commit represented by a qd merge", async () => {
+    await addNode(root, {
+      id: "a",
+      title: "Build A",
+      spec: "Do A",
+      acceptance: "A works",
+    });
+    await ciPass(root, "a");
+
+    const merged = await markMerged(root, "a", "squash", {
+      commitSha: "abcdef1234567890",
+    });
+
+    expect(merged.status).toBe("done");
+    expect(await latestRun(root, "a", "merge")).toMatchObject({
+      status: "recorded",
+      summary: "Merge recorded with squash at commit abcdef1234567890",
+    });
+  });
+
+  it("preserves done nodes on post-merge CI success and marks failures regressed", async () => {
+    await addNode(root, {
+      id: "a",
+      title: "Build A",
+      spec: "Do A",
+      acceptance: "A works",
+    });
+    await ciPass(root, "a");
+    await markMerged(root, "a", "squash");
+
+    const passed = await recordCiResult(root, "a", {
+      status: "passed",
+      summary: "main CI passed after merge",
+    });
+    expect(passed.status).toBe("done");
+
+    const failed = await recordCiResult(root, "a", {
+      status: "failed",
+      summary: "main CI failed after merge",
+    });
+    expect(failed.status).toBe("regressed");
+  });
+
   it("appends node notes to status reason and lists them oldest first", async () => {
     await addNode(root, {
       id: "a",

@@ -45,6 +45,7 @@ export interface QdNode {
   context: string | null;
   status_reason: string | null;
   check_command: string | null;
+  ci_command: string | null;
   created_at: string;
   updated_at: string;
   claimed_at: string | null;

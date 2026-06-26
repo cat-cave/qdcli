@@ -140,6 +140,7 @@ function node(
     audit_focus: [],
     status_reason: null,
     check_command: null,
+    ci_command: null,
     context: null,
     created_at: "2026-06-20T00:00:00.000Z",
     updated_at: "2026-06-20T00:00:00.000Z",

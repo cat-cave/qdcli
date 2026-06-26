@@ -27,6 +27,7 @@ import {
   listNodes,
   listRuns,
   listRegistry,
+  latestRun,
   markMerged,
   promoteFindings,
   readConfig,
@@ -119,7 +120,7 @@ async function main(): Promise<void> {
     case "validate":
       return validation(root, json);
     case "config":
-      return configCommand(root, action, extra, args.options, json);
+      return configCommand(root, action, extra, args.command.slice(3), args.options, json);
     case "import":
       return importCommand(root, args.options, json);
     case "export":
@@ -157,10 +158,7 @@ async function main(): Promise<void> {
         json,
       );
     case "audit":
-      return output(
-        await startRun(root, requiredArg(action === "start" ? extra : action, "node id"), "audit"),
-        json,
-      );
+      return auditCommand(root, action, extra, args.options, json);
     case "finding":
       return findingCommand(root, action, extra, args.options, json);
     case "promote-findings":
@@ -178,12 +176,19 @@ async function main(): Promise<void> {
       return ciCommand(root, action, extra, args.options, json);
     case "check":
       return checkCommand(root, action, extra, args.options, json);
+    case "verification":
+      return verificationCommand(root, action, extra, args.options, json);
     case "merge":
       return output(
         await markMerged(
           root,
           requiredArg(action, "node id"),
           strictEnumOpt(args.options.strategy, isMergeStrategy, "--strategy", "squash"),
+          {
+            commitSha:
+              stringOpt(args.options["use-existing-commit"]) ??
+              stringOpt(args.options["already-merged-at"]),
+          },
         ),
         json,
       );
@@ -218,7 +223,7 @@ async function main(): Promise<void> {
     case "snapshot":
       return snapshotCommand(root, args.options, json);
     case "prompt":
-      return promptCommand(root, action, extra, json);
+      return promptCommand(root, action, extra, args.options, json);
     case "agent":
       return agentCommand(root, action, extra, args.options, json);
     case "workspace":
@@ -240,6 +245,13 @@ async function doctor(root: string, json: boolean): Promise<void> {
   if (!config.ciCommand.trim()) configErrors.push("ci_command is empty");
   if (!["squash", "merge", "rebase"].includes(config.mergeStrategy)) {
     configErrors.push("merge_strategy must be squash, merge, or rebase");
+  }
+  if (config.ciProvider === "github") {
+    if (!config.ciRepo.trim()) configErrors.push("ci_repo is required when ci_provider is github");
+    if (!config.ciWorkflow.trim()) {
+      configErrors.push("ci_workflow is required when ci_provider is github");
+    }
+    if (config.ciAuth !== "gh-cli") configErrors.push("ci_auth must be gh-cli");
   }
   const result = {
     ok: validationResult.ok && configErrors.length === 0,
@@ -266,6 +278,7 @@ async function configCommand(
   root: string,
   action: string | undefined,
   key: string | undefined,
+  positionals: string[],
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
@@ -276,8 +289,12 @@ async function configCommand(
     return output({ key: configKey, value: getConfigValue(config, configKey) }, json);
   }
   if (action === "set") {
-    const value = requiredArg(options.value ? stringOpt(options.value) : undefined, "--value");
-    const next = setConfigValue(config, requiredArg(key, "config key"), value);
+    const configKey = requiredArg(key, "config key");
+    const value = stringOpt(options.value) ?? positionals[0] ?? "";
+    const next =
+      configKey === "ci-provider" || configKey === "ci_provider"
+        ? setCiProviderConfig(config, value, options)
+        : setConfigValue(config, configKey, requiredArg(value || undefined, "--value"));
     await writeConfig(root, next);
     return output(next, json);
   }
@@ -328,7 +345,10 @@ async function exportCommand(
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
-  const snapshot = await graphSnapshot(root);
+  const snapshot = filterSnapshot(await graphSnapshot(root), {
+    statuses: parseStatusList(options.status),
+    milestone: stringOpt(options.milestone),
+  });
   const outPath = stringOpt(options.out);
   if (!outPath) return output(snapshot, true);
 
@@ -408,6 +428,7 @@ async function nodeCommand(
         context: stringOpt(options.context),
         status_reason: stringOpt(options["status-reason"]),
         check_command: stringOpt(options["check-command"]),
+        ci_command: stringOpt(options["ci-command"]),
         branch: stringOpt(options.branch),
       }),
       json,
@@ -584,6 +605,59 @@ async function findingCommand(
   throw new Error(`Unknown finding action: ${action}`);
 }
 
+async function auditCommand(
+  root: string,
+  action: string | undefined,
+  nodeId: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  if (action === "start") {
+    return output(await startRun(root, requiredArg(nodeId, "node id"), "audit"), json);
+  }
+  if (action && action !== "pass") {
+    return output(await startRun(root, requiredArg(action, "node id"), "audit"), json);
+  }
+  if (action === "pass") {
+    const id = requiredArg(nodeId, "node id");
+    const imported = await importFindingsFromReport(
+      root,
+      required(options["from-report"], "--from-report"),
+      id,
+      { allowEmpty: true },
+    );
+    const gate = await gateNode(root, id);
+    if (!gate.ok) {
+      output(
+        {
+          ok: false,
+          code: "auditNotClean",
+          nodeId: id,
+          imported,
+          blocking: gate.blocking,
+          remaining: gate.blocking.length,
+        },
+        json,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const promoted = await promoteFindings(root, id);
+    const openFindings = await listFindings(root, { nodeId: id, status: "open" });
+    return output(
+      {
+        ok: true,
+        nodeId: id,
+        imported,
+        promoted,
+        remaining: openFindings.length,
+      },
+      json,
+    );
+  }
+  throw new Error(`Unknown audit action: ${action}`);
+}
+
 async function gate(root: string, nodeId: string, json: boolean): Promise<void> {
   const result = await gateNode(root, nodeId);
   output(result, json);
@@ -599,6 +673,9 @@ async function ciCommand(
 ): Promise<void> {
   if (action === "run")
     return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "ci", options, json);
+  if (action === "poll" || action === "wait") {
+    return pollCi(root, requiredArg(nodeId, "node id"), options, json);
+  }
   if (action === "start") {
     return output(
       await startRun(root, requiredArg(nodeId, "node id"), "ci", {
@@ -630,6 +707,152 @@ async function ciCommand(
   throw new Error(`Unknown ci action: ${action}`);
 }
 
+async function pollCi(
+  root: string,
+  nodeId: string,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const config = await readConfig(root);
+  const provider = stringOpt(options.provider) ?? config.ciProvider;
+  if (provider !== "github") {
+    throw new Error(
+      provider === "none"
+        ? "ci_provider is none. Configure a provider or pass --provider github."
+        : `Unsupported CI provider: ${provider}`,
+    );
+  }
+  const sha = stringOpt(options.sha) ?? (await latestMergeCommitSha(root, nodeId));
+  if (!sha) {
+    throw new Error(
+      "No commit SHA found. Pass --sha, or record qd merge <node> --use-existing-commit <sha> first.",
+    );
+  }
+  const result = await pollGitHubCi(root, nodeId, sha, config, options);
+  output(result, json);
+  if (!result.ok) process.exitCode = 1;
+}
+
+async function latestMergeCommitSha(root: string, nodeId: string): Promise<string | null> {
+  const run = await latestRun(root, nodeId, "merge");
+  const summary = run?.summary ?? "";
+  const match = /\b[0-9a-f]{7,40}\b/i.exec(summary);
+  return match?.[0] ?? null;
+}
+
+interface PolledCiRun {
+  databaseId?: number;
+  status?: string;
+  conclusion?: string;
+  url?: string;
+  headSha?: string;
+  name?: string;
+  displayTitle?: string;
+}
+
+async function pollGitHubCi(
+  root: string,
+  nodeId: string,
+  sha: string,
+  config: QdConfig,
+  options: Record<string, string | string[] | boolean>,
+): Promise<Record<string, unknown> & { ok: boolean }> {
+  const repo = stringOpt(options.repo) ?? config.ciRepo;
+  const workflow = stringOpt(options.workflow) ?? config.ciWorkflow;
+  const auth = stringOpt(options.auth) ?? config.ciAuth;
+  if (!repo.trim()) throw new Error("--repo or ci_repo is required for GitHub CI polling");
+  if (!workflow.trim())
+    throw new Error("--workflow or ci_workflow is required for GitHub CI polling");
+  if (auth !== "gh-cli") throw new Error("GitHub CI polling currently supports --auth gh-cli only");
+
+  const intervalSeconds = numberOpt(options.interval) ?? 30;
+  const timeoutSeconds = numberOpt(options.timeout) ?? 1800;
+  if (intervalSeconds < 1) throw new Error("--interval must be at least 1 second");
+  if (timeoutSeconds < 1) throw new Error("--timeout must be at least 1 second");
+  const startedAt = Date.now();
+  let lastRun: PolledCiRun | null = null;
+
+  while (Date.now() - startedAt <= timeoutSeconds * 1000) {
+    lastRun = await githubRunForSha(root, repo, workflow, sha);
+    const conclusion = lastRun?.conclusion;
+    const status = lastRun?.status;
+    if (conclusion) {
+      const ok = conclusion === "success";
+      const evidence = lastRun?.url ?? String(lastRun?.databaseId ?? sha);
+      const node = await recordCiResult(root, nodeId, {
+        status: ok ? "passed" : "failed",
+        summary: `GitHub CI ${ok ? "passed" : `failed (${conclusion})`}: ${evidence}`,
+        logPath: null,
+      });
+      return {
+        ok,
+        provider: "github",
+        repo,
+        workflow,
+        sha,
+        run: lastRun,
+        node,
+      };
+    }
+    if (status === "completed" && !conclusion) {
+      const node = await recordCiResult(root, nodeId, {
+        status: "failed",
+        summary: `GitHub CI completed without a conclusion for ${sha}`,
+        logPath: null,
+      });
+      return {
+        ok: false,
+        provider: "github",
+        repo,
+        workflow,
+        sha,
+        run: lastRun,
+        node,
+      };
+    }
+    await sleep(intervalSeconds * 1000);
+  }
+  return {
+    ok: false,
+    provider: "github",
+    repo,
+    workflow,
+    sha,
+    run: lastRun,
+    error: `Timed out after ${timeoutSeconds} seconds waiting for GitHub CI`,
+  };
+}
+
+async function githubRunForSha(
+  root: string,
+  repo: string,
+  workflow: string,
+  sha: string,
+): Promise<PolledCiRun | null> {
+  const result = await captureCommand(
+    "gh",
+    [
+      "run",
+      "list",
+      "--repo",
+      repo,
+      "--workflow",
+      workflow,
+      "--commit",
+      sha,
+      "--limit",
+      "1",
+      "--json",
+      "databaseId,status,conclusion,url,headSha,name,displayTitle",
+    ],
+    root,
+  );
+  if (result.code !== 0) throw new Error(`gh run list failed: ${result.stderr.trim()}`);
+  const parsed = JSON.parse(result.stdout || "[]") as unknown;
+  if (!Array.isArray(parsed)) throw new Error("gh run list returned non-array JSON");
+  return (parsed[0] as PolledCiRun | undefined) ?? null;
+}
+
 function ciEvidence(options: Record<string, string | string[] | boolean>): {
   summary: string;
   logPath?: string;
@@ -658,6 +881,39 @@ async function checkCommand(
   if (action === "run")
     return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "check", options, json);
   throw new Error(`Unknown check action: ${action}`);
+}
+
+async function verificationCommand(
+  root: string,
+  action: string | undefined,
+  nodeId: string | undefined,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  if (action !== "sign-off" && action !== "signoff") {
+    throw new Error(`Unknown verification action: ${action}`);
+  }
+  const id = requiredArg(nodeId, "node id");
+  const type = strictEnum(required(options.type, "--type"), isVerificationType, "--type");
+  const note = required(options.note, "--note");
+  const evidence = stringOpt(options.evidence);
+  const node = await getNode(root, id);
+  if (node.verification.length > 0 && !node.verification.some((entry) => entry.type === type)) {
+    throw new Error(
+      `Node ${id} has no ${type} verification entry. Sign off only declared verification gates.`,
+    );
+  }
+  const text = [
+    `Verification sign-off (${type}): ${note}`,
+    evidence ? `Evidence: ${evidence}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const saved = await addNodeNote(root, id, text);
+  return output(
+    { ok: true, nodeId: id, type, note, evidence: evidence ?? null, noteRecord: saved },
+    json,
+  );
 }
 
 async function advanceCommand(
@@ -879,6 +1135,7 @@ async function nodeInputFromOptions(
     context: stringOpt(options.context),
     statusReason: stringOpt(options["status-reason"]),
     checkCommand: stringOpt(options["check-command"]),
+    ciCommand: stringOpt(options["ci-command"]),
   };
 }
 
@@ -937,6 +1194,9 @@ function normalizeNodeInput(raw: unknown, context: string): AddNodeInput {
     checkCommand:
       optionalStringField(value, "checkCommand", context) ??
       optionalStringField(value, "check_command", context),
+    ciCommand:
+      optionalStringField(value, "ciCommand", context) ??
+      optionalStringField(value, "ci_command", context),
   };
 }
 
@@ -1231,13 +1491,31 @@ async function promptCommand(
   root: string,
   action: string | undefined,
   id: string | undefined,
+  options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
   const kind = action ?? "plan";
-  const node = kind === "implement" && id ? await getNode(root, id) : null;
-  const prompt = promptText(kind, node);
+  const node = (kind === "implement" || kind === "audit") && id ? await getNode(root, id) : null;
+  const rulesPath =
+    stringOpt(options["include-project-rules"]) ?? stringOpt(options["include-rules-file"]);
+  const projectRules = rulesPath ? await readTextFile(root, rulesPath) : undefined;
+  const auditBase = stringOpt(options.base) ?? "main";
+  const auditDiffCommand =
+    kind === "audit" && id ? `qd diff ${id} --self-only --base ${auditBase}` : undefined;
+  const prompt = promptText(kind, node, { projectRules, auditDiffCommand });
   if (json) {
-    output({ schemaVersion: 1, kind, nodeId: id ?? null, node, prompt }, true);
+    output(
+      {
+        schemaVersion: 1,
+        kind,
+        nodeId: id ?? null,
+        node,
+        projectRulesPath: rulesPath ?? null,
+        auditDiffCommand: auditDiffCommand ?? null,
+        prompt,
+      },
+      true,
+    );
     return;
   }
   if (action === "implement" && id) {
@@ -1283,9 +1561,10 @@ async function executeConfiguredCheck(
   if (config.requireCleanWorktree) await assertCleanWorktree(root, config.cleanWorktreeExcept);
 
   const node = await getNode(root, nodeId);
+  const nodeCommand = kind === "ci" ? node.ci_command : node.check_command;
   const command =
     stringOpt(options.cmd) ??
-    node.check_command ??
+    nodeCommand ??
     (kind === "ci" ? config.ciCommand : config.checkCommand);
   if (!command.trim()) throw new Error(`${kind}_command is empty; configure it or pass --cmd`);
   const paths = getProjectPaths(root);
@@ -1378,6 +1657,10 @@ function captureCommand(
       }),
     );
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function agentCommand(
@@ -1813,13 +2096,16 @@ async function importFindingsFromReport(
   root: string,
   reportPath: string,
   nodeIdArg?: string,
-): Promise<unknown> {
+  options: { allowEmpty?: boolean } = {},
+): Promise<{ nodeId: string; importedFindings: number; findings: unknown[] }> {
   const report = JSON.parse(await readFile(path.resolve(root, reportPath), "utf8")) as unknown;
   const nodeId = nodeIdArg ?? stringAt(report, "nodeId") ?? stringAt(report, "node_id");
   if (!nodeId)
     throw new Error("Report must include nodeId/node_id or command must provide node id");
   const findings = arrayAtPath(report, "findings");
-  if (findings.length === 0) throw new Error("Report must include a non-empty findings array");
+  if (findings.length === 0 && !options.allowEmpty) {
+    throw new Error("Report must include a non-empty findings array");
+  }
   const imported = [];
   for (const [index, raw] of findings.entries()) {
     const severity = stringAt(raw, "severity");
@@ -1951,6 +2237,13 @@ function requiredArg(value: string | undefined, name: string): string {
 function setConfigValue(config: QdConfig, key: string, value: string): QdConfig {
   if (key === "check_command" || key === "check-command") return { ...config, checkCommand: value };
   if (key === "ci_command" || key === "ci-command") return { ...config, ciCommand: value };
+  if (key === "ci_provider" || key === "ci-provider") return setCiProviderConfig(config, value, {});
+  if (key === "ci_repo" || key === "ci-repo") return { ...config, ciRepo: value };
+  if (key === "ci_workflow" || key === "ci-workflow") return { ...config, ciWorkflow: value };
+  if (key === "ci_auth" || key === "ci-auth") {
+    if (value !== "gh-cli") throw new Error("ci_auth must be gh-cli");
+    return { ...config, ciAuth: value };
+  }
   if (key === "skills_dir" || key === "skills-dir") return { ...config, skillsDir: value };
   if (key === "merge_strategy" || key === "merge-strategy") {
     if (value !== "squash" && value !== "merge" && value !== "rebase") {
@@ -1979,9 +2272,37 @@ function setConfigValue(config: QdConfig, key: string, value: string): QdConfig 
   throw new Error(`Unknown config key: ${key}`);
 }
 
+function setCiProviderConfig(
+  config: QdConfig,
+  value: string,
+  options: Record<string, string | string[] | boolean>,
+): QdConfig {
+  if (value !== "none" && value !== "github") throw new Error("ci_provider must be none or github");
+  if (value === "none") {
+    return { ...config, ciProvider: "none", ciRepo: "", ciWorkflow: "", ciAuth: "gh-cli" };
+  }
+  const repo = stringOpt(options.repo) ?? config.ciRepo;
+  const workflow = stringOpt(options.workflow) ?? config.ciWorkflow;
+  const auth = stringOpt(options.auth) ?? config.ciAuth;
+  if (!repo.trim()) throw new Error("--repo is required when setting ci-provider github");
+  if (!workflow.trim()) throw new Error("--workflow is required when setting ci-provider github");
+  if (auth !== "gh-cli") throw new Error("--auth must be gh-cli");
+  return {
+    ...config,
+    ciProvider: "github",
+    ciRepo: repo,
+    ciWorkflow: workflow,
+    ciAuth: "gh-cli",
+  };
+}
+
 function getConfigValue(config: QdConfig, key: string): unknown {
   if (key === "check_command" || key === "check-command") return config.checkCommand;
   if (key === "ci_command" || key === "ci-command") return config.ciCommand;
+  if (key === "ci_provider" || key === "ci-provider") return config.ciProvider;
+  if (key === "ci_repo" || key === "ci-repo") return config.ciRepo;
+  if (key === "ci_workflow" || key === "ci-workflow") return config.ciWorkflow;
+  if (key === "ci_auth" || key === "ci-auth") return config.ciAuth;
   if (key === "skills_dir" || key === "skills-dir") return config.skillsDir;
   if (key === "merge_strategy" || key === "merge-strategy") return config.mergeStrategy;
   if (key === "require_clean_worktree" || key === "require-clean-worktree")
@@ -2128,6 +2449,42 @@ function parseSeverityList(value: string | string[] | boolean | undefined): Prio
     if (!isPriority(severity)) throw new Error(`--severity must contain P0, P1, P2, or P3`);
     return severity;
   });
+}
+
+function parseStatusList(value: string | string[] | boolean | undefined): NodeStatus[] | undefined {
+  const raw = stringListOpt(value).flatMap((item) => item.split(","));
+  if (raw.length === 0) return undefined;
+  return raw.map((item) => {
+    const status = item.trim();
+    if (!isNodeStatus(status)) {
+      throw new Error(`--status must contain one of ${NODE_STATUSES.join(", ")}`);
+    }
+    return status;
+  });
+}
+
+function filterSnapshot(
+  snapshot: GraphSnapshot,
+  filters: { statuses?: NodeStatus[]; milestone?: string },
+): GraphSnapshot {
+  const statuses = filters.statuses ? new Set(filters.statuses) : null;
+  const nodeIds = new Set(
+    snapshot.nodes
+      .filter((node) => !statuses || statuses.has(node.status))
+      .filter((node) => !filters.milestone || node.milestone === filters.milestone)
+      .map((node) => node.id),
+  );
+  if (!statuses && !filters.milestone) return snapshot;
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.filter((node) => nodeIds.has(node.id)),
+    edges: snapshot.edges.filter(
+      (edge) => nodeIds.has(edge.from_node) && nodeIds.has(edge.to_node),
+    ),
+    findings: snapshot.findings.filter((finding) => nodeIds.has(finding.node_id)),
+    runs: snapshot.runs.filter((run) => nodeIds.has(run.node_id)),
+    node_notes: snapshot.node_notes.filter((note) => nodeIds.has(note.node_id)),
+  };
 }
 
 function parseVerification(value: string): VerificationEntry {
@@ -2321,18 +2678,20 @@ Core:
   qd velocity [--window 7]
   qd critical-path [--milestone <name>]
   qd eta [--window 7] [--milestone <name>]
-  qd prompt plan|implement|audit|resolve [node] [--json]
+  qd prompt plan|implement|audit|resolve [node] [--include-project-rules <path>] [--base main] [--json]
   qd config show
   qd config get ci-command
   qd config set check-command --value "<fast project check command>"
+  qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
   qd export [--out roadmap/spec-dag.json]
+  qd export --status ready,claimed,review --milestone alpha [--json]
   qd import --from roadmap/spec-dag.json [--schema-mapping qd-import-map.json] [--dry-run] [--verbose]
   qd import --from docs/ROADMAP.html --adapter roadmap-html [--dry-run]
   qd import --from roadmap.md --adapter markdown-checklist [--dry-run]
   qd workspace status|ready|graph [--json] [--config ~/.config/qd/workspaces.toml] [--repo <path>]
 
 Graph:
-  qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"]
+  qd node add --title <text> --spec <text> --acceptance <text> [--id <id>] [--project <name>] [--verify type=command,value="<command>"] [--ci-command <command>]
   qd node add --from-json <node.json>
   qd node add --title <text> --spec-file <path> --acceptance-file <path>
   qd nodes add-bulk --from-json <plan.json>
@@ -2358,7 +2717,11 @@ Audit:
   qd gate <node>
   qd check run <node>
   qd ci run <node>
+  qd ci poll <node> [--sha <commit>] [--provider github] [--repo owner/name] [--workflow ci.yml]
   qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)
+  qd verification sign-off <node> --type manual --note <text> [--evidence <path>]
+  qd audit pass <node> --from-report <audit-report.json>
+  qd merge <node> --use-existing-commit <sha>
 
 Viewer:
   qd view [--port 5173]`;

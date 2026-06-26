@@ -250,4 +250,8 @@ export const migrations = [
       `pragma foreign_keys = on`,
     ],
   },
+  {
+    id: "005_node_ci_command",
+    statements: [`alter table nodes add column ci_command text`],
+  },
 ] as const;

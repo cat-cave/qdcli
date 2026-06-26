@@ -47,6 +47,7 @@ export interface AddNodeInput {
   context?: string | null;
   statusReason?: string | null;
   checkCommand?: string | null;
+  ciCommand?: string | null;
 }
 
 export interface ValidationResult {
@@ -91,6 +92,7 @@ export async function addNode(root: string, input: AddNodeInput): Promise<QdNode
     context: input.context ?? null,
     status_reason: input.statusReason ?? null,
     check_command: input.checkCommand ?? null,
+    ci_command: input.ciCommand ?? null,
     created_at: now,
     updated_at: now,
     claimed_at: null,
@@ -102,8 +104,8 @@ export async function addNode(root: string, input: AddNodeInput): Promise<QdNode
     db,
     `insert into nodes (
       id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
-      spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, created_at, updated_at, claimed_at, done_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, ci_command, created_at, updated_at, claimed_at, done_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       node.id,
       node.title,
@@ -125,6 +127,7 @@ export async function addNode(root: string, input: AddNodeInput): Promise<QdNode
       node.context,
       node.status_reason,
       node.check_command,
+      node.ci_command,
       node.created_at,
       node.updated_at,
       node.claimed_at,
@@ -158,6 +161,7 @@ export async function updateNode(
       | "context"
       | "status_reason"
       | "check_command"
+      | "ci_command"
     >
   > & {
     estimatePoints?: number;
@@ -177,7 +181,7 @@ export async function updateNode(
     db,
     `update nodes set
       title = ?, kind = ?, milestone = ?, group_name = ?, projects_json = ?, status = ?, priority = ?, estimate_points = ?, risk = ?,
-      owner = ?, branch = ?, spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?, check_command = ?, updated_at = ?
+      owner = ?, branch = ?, spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?, check_command = ?, ci_command = ?, updated_at = ?
     where id = ?`,
     [
       next.title,
@@ -199,6 +203,7 @@ export async function updateNode(
       next.context,
       next.status_reason,
       next.check_command,
+      next.ci_command,
       next.updated_at,
       id,
     ],
@@ -569,6 +574,7 @@ export async function recordCiResult(
   },
 ): Promise<QdNode> {
   const db = await openDatabase(root);
+  const current = await getNode(root, nodeId);
   const now = new Date().toISOString();
   const startedAt = input.startedAt ?? now;
   const finishedAt = input.finishedAt ?? now;
@@ -586,8 +592,16 @@ export async function recordCiResult(
       input.logPath ?? null,
     ],
   );
+  const nextStatus =
+    input.status === "passed"
+      ? current.status === "done"
+        ? "done"
+        : "mergeable"
+      : current.status === "done"
+        ? "regressed"
+        : "blocked";
   await run(db, "update nodes set status = ?, updated_at = ? where id = ?", [
-    input.status === "passed" ? "mergeable" : "blocked",
+    nextStatus,
     finishedAt,
     nodeId,
   ]);
@@ -635,17 +649,27 @@ export async function recordCheckResult(
 
 export async function ciFail(root: string, nodeId: string, summary = "CI failed"): Promise<QdNode> {
   const db = await openDatabase(root);
+  const current = await getNode(root, nodeId);
   const now = new Date().toISOString();
   await run(
     db,
     "insert into runs (id, node_id, kind, status, started_at, finished_at, summary) values (?, ?, 'ci', 'failed', ?, ?, ?)",
     [randomUUID(), nodeId, now, now, summary],
   );
-  await run(db, "update nodes set status = 'blocked', updated_at = ? where id = ?", [now, nodeId]);
+  await run(db, "update nodes set status = ?, updated_at = ? where id = ?", [
+    current.status === "done" ? "regressed" : "blocked",
+    now,
+    nodeId,
+  ]);
   return getNode(root, nodeId);
 }
 
-export async function markMerged(root: string, nodeId: string, strategy: string): Promise<QdNode> {
+export async function markMerged(
+  root: string,
+  nodeId: string,
+  strategy: string,
+  input: { commitSha?: string | null } = {},
+): Promise<QdNode> {
   const config = await readConfig(root);
   const gate = await gateNode(root, nodeId);
   if (!gate.ok) throw new Error("Cannot merge while P0/P1 findings are open");
@@ -662,7 +686,15 @@ export async function markMerged(root: string, nodeId: string, strategy: string)
   await run(
     db,
     "insert into runs (id, node_id, kind, status, started_at, finished_at, summary) values (?, ?, 'merge', 'recorded', ?, ?, ?)",
-    [randomUUID(), nodeId, now, now, `Merge recorded with ${strategy}`],
+    [
+      randomUUID(),
+      nodeId,
+      now,
+      now,
+      input.commitSha
+        ? `Merge recorded with ${strategy} at commit ${input.commitSha}`
+        : `Merge recorded with ${strategy}`,
+    ],
   );
   await run(db, "update nodes set status = 'done', done_at = ?, updated_at = ? where id = ?", [
     now,
@@ -789,9 +821,9 @@ export async function restoreGraphSnapshot(root: string, snapshot: GraphSnapshot
       db,
       `insert into nodes (
         id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
-        spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command,
+        spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, ci_command,
         created_at, updated_at, claimed_at, done_at
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         node.id,
         node.title,
@@ -813,6 +845,7 @@ export async function restoreGraphSnapshot(root: string, snapshot: GraphSnapshot
         node.context,
         node.status_reason,
         node.check_command,
+        node.ci_command ?? null,
         node.created_at,
         node.updated_at,
         node.claimed_at,
@@ -1119,11 +1152,12 @@ async function registryContains(
 }
 
 function hydrateNode(row: NodeRow): QdNode {
+  const { projects_json, verification_json, audit_focus_json, ...node } = row;
   return {
-    ...row,
-    projects: parseJsonArray<string>(row.projects_json),
-    verification: parseJsonArray<VerificationEntry>(row.verification_json),
-    audit_focus: parseJsonArray<string>(row.audit_focus_json),
+    ...node,
+    projects: parseJsonArray<string>(projects_json),
+    verification: parseJsonArray<VerificationEntry>(verification_json),
+    audit_focus: parseJsonArray<string>(audit_focus_json),
   };
 }
 
