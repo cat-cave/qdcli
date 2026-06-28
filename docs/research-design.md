@@ -1,5 +1,7 @@
 # qdcli research and product design
 
+> Historical note: this document records early research and design thinking for qdcli itself. It is not the adopter setup guide and may mention implementation plans or tooling choices that have since shipped or changed. Agents using qd in another project should prefer `docs/llms.md`, `docs/setup.md`, and the installed qd DAG skill.
+
 ## Scope
 
 `qdcli` is a local-first DAG ledger for orchestrator-led coding agents. It does not run agents, route model calls, or replace Claude/Codex goal mode. It owns the durable state that the orchestrator consults and updates while delegating work:

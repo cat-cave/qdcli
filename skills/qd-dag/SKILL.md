@@ -20,9 +20,9 @@ The point is not to make every subagent independently choose work from qd. The p
 During setup, configure qd for the repository's real definition of green:
 
 ```sh
-qd config set check-command --value "<fast project check command>"
-qd config set ci-command --value "<full project CI command>"
-qd config set merge-strategy --value "squash"
+qd config set check-command "<fast project check command>"
+qd config set ci-command "<full project CI command>"
+qd config set merge-strategy "squash"
 qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
 qd config get ci-command
 ```
@@ -39,7 +39,7 @@ The default opinion is strict:
 
 Change these only when the repository genuinely needs a different operating model, and record why with `qd node note <id> --text "..."` or in project docs.
 
-For mature projects, import existing DAG state instead of recreating it manually:
+For mature projects, migrate non-qd roadmap state instead of recreating it manually:
 
 ```sh
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
@@ -64,9 +64,11 @@ qd milestone register --name "baseline" --rank 10
 6. Audit subagents review the completed node and the orchestrator records structured findings, preferably with `qd audit pass <id> --from-report <file>`.
 7. P0/P1 findings are resolved before checks. P2/P3 findings are promoted after the current node passes the gate.
 8. Manual verification gates are signed off with `qd verification sign-off` when the node declares them.
-9. The orchestrator runs `qd check run <id>` when a fast local preflight is useful.
-10. The orchestrator runs `qd ci run <id>` or `qd ci poll <id>` for the full merge gate; `qd ci record-pass` is only for recording an externally completed CI check with evidence.
-11. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses `qd merge <id>` only after qd marks the node mergeable.
+9. The orchestrator runs `qd gate <id> --phase ci --json` before CI when policy must be included in `ok`.
+10. The orchestrator runs `qd check run <id>` when a fast local preflight is useful.
+11. The orchestrator runs `qd ci run <id>` or `qd ci poll <id>` for the full merge gate; `qd ci record-pass` is only for recording an externally completed CI check with evidence.
+12. The orchestrator runs `qd gate <id> --phase merge --json` before recording merge state.
+13. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses `qd merge <id> --use-existing-commit <sha>` only after qd marks the node mergeable.
 
 `qd merge` records qd state only. It does not run `git merge`, squash commits, rebase, push, or open/merge a GitHub PR. For direct-to-main workflows, use `qd merge <id> --use-existing-commit <sha>` after the real merge so qd records the commit it represents.
 

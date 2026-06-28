@@ -29,7 +29,7 @@ nix profile install github:cat-cave/qdcli#qd
 qd --version
 ```
 
-## Install For Development
+## Contributor Setup
 
 ```sh
 curl -fsSL https://vite.plus | bash
@@ -46,8 +46,8 @@ The Nix shell provides Node 24, git, gh, just, and Corepack-managed pnpm. Projec
 ```sh
 qd setup
 qd agent install skills-sh
-qd config set check-command --value "<fast project check command>"
-qd config set ci-command --value "<full project CI command>"
+qd config set check-command "<fast project check command>"
+qd config set ci-command "<full project CI command>"
 qd config get ci-command
 qd group register --name runtime
 qd milestone register --name baseline --rank 10
@@ -56,17 +56,19 @@ qd ready
 qd claim scaffold --agent codex
 qd prompt implement scaffold
 qd complete scaffold --summary "Implemented the scaffold."
+printf '{"findings":[]}\n' > /tmp/qd-clean-audit.json
 qd audit start scaffold
+qd audit pass scaffold --from-report /tmp/qd-clean-audit.json
 qd gate scaffold
 qd ci run scaffold
 # Perform the real git/GitHub merge using this repository's normal workflow.
-qd merge scaffold
+qd merge scaffold --use-existing-commit <merge-commit-sha>
 qd stats
 qd critical-path
 qd eta
 ```
 
-For an existing roadmap, import instead of hand-entering nodes:
+For an existing non-qd roadmap, migrate instead of hand-entering nodes:
 
 ```sh
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
@@ -75,6 +77,8 @@ qd validate
 ```
 
 See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, dependency arrays, and dry-run review.
+
+For a repo that already commits a qd export, restore the local cache with `qd sync --from roadmap/spec-dag.json --dry-run --json` and then `qd sync --from roadmap/spec-dag.json`.
 
 `qd merge` records qd state only. It does not run git or GitHub merges; keep using the repo's normal merge workflow and use qd to enforce the DAG, audit, and green-CI gate.
 

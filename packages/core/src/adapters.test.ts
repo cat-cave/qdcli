@@ -56,6 +56,34 @@ describe("import adapters", () => {
     ]);
   });
 
+  it("prefers roadmap data ids over wrapper ids", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section id="wrapper-id">
+        <h3 data-qd-id="runtime-core">Runtime Core</h3>
+      </section>
+    `,
+    );
+
+    expect(output.nodes[0]?.id).toBe("runtime-core");
+  });
+
+  it("skips blank roadmap headings and omits status reasons when there are no deps", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <h3>   </h3>
+      <p>Ignored.</p>
+      <h3>Real Work</h3>
+      <p>Actual spec.</p>
+    `,
+    );
+
+    expect(output.nodes.map((node) => node.id)).toEqual(["real-work"]);
+    expect(output.nodes[0]?.status_reason).toBeUndefined();
+  });
+
   it("falls back to paragraph text and preserves duplicate roadmap titles with suffixes", () => {
     const output = adaptImportSource(
       "roadmap-html",
@@ -74,6 +102,154 @@ describe("import adapters", () => {
     expect(output.nodes.map((node) => [node.id, node.status, node.spec])).toEqual([
       ["review-api-docs", "blocked", "Audit <public> API docs."],
       ["review-api-docs-2", "ready", "Publish the docs follow-up."],
+    ]);
+  });
+
+  it("keeps incrementing duplicate roadmap title suffixes", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <h3>Repeat</h3>
+      <h3>Repeat</h3>
+      <h3>Repeat</h3>
+    `,
+    );
+
+    expect(output.nodes.map((node) => node.id)).toEqual(["repeat", "repeat-2", "repeat-3"]);
+  });
+
+  it("uses explicit roadmap goal text before generic paragraph text", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section>
+        <h3>Goal First</h3>
+        <span class="goal">Canonical goal.</span>
+        <p>Fallback paragraph.</p>
+      </section>
+    `,
+    );
+
+    expect(output.nodes[0]?.spec).toBe("Canonical goal.");
+    expect(output.nodes[0]?.acceptance).toBe("Canonical goal.");
+  });
+
+  it("falls back to title text when roadmap cards have no paragraph or acceptance list", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section class="merged">
+        <h3>Ship Runtime</h3>
+      </section>
+    `,
+    );
+
+    expect(output.nodes[0]).toMatchObject({
+      id: "ship-runtime",
+      status: "done",
+      spec: "Ship Runtime",
+      acceptance: "Ship Runtime",
+    });
+  });
+
+  it("deduplicates roadmap dependencies from class, data, and prose references", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section id="bootstrap">
+        <h3>Bootstrap</h3>
+      </section>
+      <section data-deps="bootstrap, Bootstrap">
+        <h3>Wire Agent</h3>
+        <span class="dep">Bootstrap; bootstrap</span>
+        <p>Depends on: Bootstrap.</p>
+      </section>
+    `,
+    );
+
+    expect(output.edges).toEqual([
+      { from_node: "bootstrap", to_node: "wire-agent", type: "requires" },
+    ]);
+    expect(output.nodes[1]?.status_reason).toBe("Imported dependencies: Bootstrap");
+  });
+
+  it("does not let a previously closed roadmap container absorb a later heading", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <div class="done">
+        <h3>Closed Runtime</h3>
+      </div>
+      <h3>Loose Followup</h3>
+      <p>Loose spec.</p>
+    `,
+    );
+
+    expect(output.nodes.map((node) => [node.id, node.status, node.spec])).toEqual([
+      ["closed-runtime", "done", "Closed Runtime"],
+      ["loose-followup", "ready", "Loose spec."],
+    ]);
+  });
+
+  it("keeps each roadmap card segment within its own adjacent container", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section>
+        <h3>Alpha</h3>
+        <p>Alpha spec.</p>
+      </section>
+      <section class="in-progress">
+        <h3>Beta</h3>
+        <p>Beta spec.</p>
+      </section>
+    `,
+    );
+
+    expect(output.nodes.map((node) => [node.id, node.status, node.spec])).toEqual([
+      ["alpha", "ready", "Alpha spec."],
+      ["beta", "working", "Beta spec."],
+    ]);
+  });
+
+  it("stops loose roadmap card segments at the nearest following container", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <h3>Loose Work</h3>
+      <div class="done">
+        <p>Nested unrelated text.</p>
+      </div>
+      <article class="blocked">
+        <p>Later unrelated text.</p>
+      </article>
+    `,
+    );
+
+    expect(output.nodes[0]).toMatchObject({
+      id: "loose-work",
+      status: "ready",
+      spec: "Loose Work",
+    });
+  });
+
+  it("falls back when a roadmap heading is inside an unclosed container", () => {
+    const output = adaptImportSource(
+      "roadmap-html",
+      `
+      <section class="done">
+        <h3>Unclosed Section</h3>
+        <p>Section spec.</p>
+      <article class="blocked">
+        <h3>Next Card</h3>
+        <p>Next spec.</p>
+      </article>
+    `,
+    );
+
+    expect(output.nodes.map((node) => [node.id, node.status, node.spec])).toEqual([
+      ["unclosed-section", "ready", "Section spec."],
+      ["next-card", "blocked", "Next spec."],
     ]);
   });
 
@@ -129,6 +305,59 @@ describe("import adapters", () => {
 
     expect(output.nodes).toHaveLength(1);
     expect(output.edges).toEqual([]);
+  });
+
+  it("normalizes markdown star bullets, uppercase checks, and multiple dependencies", () => {
+    const output = adaptImportSource(
+      "markdown-checklist",
+      `
+      * [X] Alpha
+      * [ ] Beta
+      * [ ] Gamma
+        * depends on: Alpha, Beta
+        * acceptance: Gamma lands
+    `,
+    );
+
+    expect(output.nodes.map((node) => [node.id, node.status])).toEqual([
+      ["alpha", "done"],
+      ["beta", "ready"],
+      ["gamma", "ready"],
+    ]);
+    expect(output.nodes[2]?.acceptance).toBe("Gamma lands");
+    expect(output.edges).toEqual([
+      { from_node: "alpha", to_node: "gamma", type: "requires" },
+      { from_node: "beta", to_node: "gamma", type: "requires" },
+    ]);
+  });
+
+  it("ignores markdown checkbox lines without a title", () => {
+    const output = adaptImportSource(
+      "markdown-checklist",
+      `
+      - [ ]
+      - [ ] Real Work
+    `,
+    );
+
+    expect(output.nodes.map((node) => node.id)).toEqual(["real-work"]);
+  });
+
+  it("trims and drops empty dependency refs from markdown details", () => {
+    const output = adaptImportSource(
+      "markdown-checklist",
+      `
+      - [ ] Alpha
+      - [ ] Beta
+      - [ ] Gamma
+        - depends on: Alpha, , Beta ;
+    `,
+    );
+
+    expect(output.edges).toEqual([
+      { from_node: "alpha", to_node: "gamma", type: "requires" },
+      { from_node: "beta", to_node: "gamma", type: "requires" },
+    ]);
   });
 
   it("fails when roadmap html dependencies reference unknown nodes", () => {

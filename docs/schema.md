@@ -12,7 +12,7 @@ That export has `schema_version`, `exported_at`, `registries`, `nodes`, `edges`,
 
 ```sh
 qd setup --no-hooks
-qd import --from roadmap/spec-dag.json
+qd sync --from roadmap/spec-dag.json --dry-run --json
 qd sync --from roadmap/spec-dag.json
 ```
 

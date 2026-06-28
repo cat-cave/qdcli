@@ -34,15 +34,22 @@ qd setup
 qd agent install skills-sh
 ```
 
-qd stores its working cache in `.qd/qd.db`, but that binary DB is local state. The portable source of truth is a committed JSON export:
+qd stores its working cache in `.qd/qd.db`, but that binary DB is local state. The portable source of truth is a committed JSON export.
+
+For a new qd DAG, start empty and export when state should be shared:
 
 ```sh
 qd export --out roadmap/spec-dag.json
-qd import --from roadmap/spec-dag.json
+```
+
+For another clone, worktree, or remote execution host that already has a committed qd export, rebuild the local cache with sync:
+
+```sh
+qd sync --from roadmap/spec-dag.json --dry-run --json
 qd sync --from roadmap/spec-dag.json
 ```
 
-Use this export/import path when moving between machines, worktrees, or remote execution hosts. Do not ask the user to commit `.qd/qd.db`. After qd mutations that should be shared, export and commit the JSON snapshot:
+Use `qd import` for migration from non-qd roadmap formats or for bootstrapping an empty qd DAG. Use `qd sync` for replacing the local cache from committed qd JSON. Treat changed, live-only, and export-only nodes from dry-run output as reviewable migration output. Do not ask the user to commit `.qd/qd.db`. After qd mutations that should be shared, export and commit the JSON snapshot:
 
 ```sh
 qd export --deterministic --out roadmap/spec-dag.json
@@ -53,9 +60,9 @@ git commit -m "Update qd DAG"
 Before creating work, configure the repository's real commands:
 
 ```sh
-qd config set check-command --value "<fast local check command>"
-qd config set ci-command --value "<full green command>"
-qd config set merge-strategy --value "squash"
+qd config set check-command "<fast local check command>"
+qd config set ci-command "<full green command>"
+qd config set merge-strategy "squash"
 qd config get ci-command
 ```
 
@@ -178,7 +185,7 @@ qd node edit <node> --blocked-by manual --blocked-reason "<specific blocker>" --
 qd node edit <node> --clear-blocker --status ready
 ```
 
-Blocked nodes are not ready work, even when dependencies are complete. Do not use blocker metadata for dependency truth; use `requires` edges for that.
+Blocked nodes are not ready work, even when dependencies are complete. Do not use blocker metadata for dependency truth; use `requires` edges for that. If the blocker is a no-go policy, physical-presence requirement, external dependency, or owner decision, keep it blocked until that condition changes. `qd gate <node> --json` reports `nodeBlocked` with the blocker type, reason, and owner so the orchestrator can stop instead of trying to advance it.
 
 Start audit:
 
@@ -206,11 +213,11 @@ Severity policy:
 P0/P1 findings block CI and merge. P2/P3 findings should be promoted into future nodes after the current node passes the gate:
 
 ```sh
-qd gate <node>
+qd gate <node> --json
 qd promote-findings <node>
 ```
 
-`qd promote-findings` returns the finding id and new node id for every promoted P2/P3, and the new node records where it came from. Use `qd finding promote <finding>` for a single finding, or `qd finding dispose <finding> --disposition accepted-risk --rationale "<why>"` when the project intentionally accepts the risk. Preserve that trail when explaining why follow-up nodes exist.
+Read `qd gate`'s `explanations[]`; it distinguishes open P0/P1 findings, running audits, explicit node blockers, and incomplete dependencies. Use `qd gate <node> --phase ci --json` before CI and `qd gate <node> --phase merge --json` before merge when you need policy included in `ok`. `qd promote-findings` returns the finding id and new node id for every promoted P2/P3, and the new node records where it came from. Use `qd finding promote <finding>` for a single finding, or `qd finding dispose <finding> --disposition accepted-risk --rationale "<why>"` when the project intentionally accepts the risk. Preserve that trail when explaining why follow-up nodes exist.
 
 Before advancing to CI or merge, ask qd for the policy view instead of guessing:
 
@@ -236,13 +243,13 @@ Do not put secrets in qd notes, node specs, findings, or exports. Worktree env i
 Normal path:
 
 ```sh
-qd gate <node>
+qd gate <node> --phase ci --json
 qd check run <node>
 qd ci run <node>
 qd merge <node>
 ```
 
-For a clean happy path, `qd advance <node> --summary "<what changed>"` can run completion, gate, configured check, and configured CI in sequence. Add `--merge` only when it is correct to record qd's merge state. qd still does not perform the real git or GitHub merge.
+For a clean happy path, `qd advance <node> --summary "<what changed>"` can run completion, gate, configured check, and configured CI in sequence. Add `--merge --use-existing-commit <sha>` only after the real repository merge has happened and it is correct to record qd's merge state. qd still does not perform the real git or GitHub merge.
 
 `qd ci run` runs the configured `ci_command`, streams output, writes a log under `.qd/logs/`, records pass/fail, and moves the node to `mergeable` or `blocked`.
 

@@ -1,7 +1,7 @@
 export function promptText(
   kind: string,
   node?: unknown,
-  extras: { projectRules?: string; auditDiffCommand?: string } = {},
+  extras: { projectRules?: string; auditDiffCommand?: string; gateContext?: unknown } = {},
 ): string {
   if (kind === "plan") {
     return `Build a qd DAG from mergeable, acceptance-driven nodes.
@@ -24,8 +24,11 @@ Create structured findings:
 - P3: polish or future improvement.
 
 Use qd finding add for each issue. P0/P1 block qd gate.
+Record a clean audit with: qd audit pass <node> --from-report <audit-report.json>
+Record a failed audit with: qd audit fail <node> --from-report <audit-report.json>
 ${extras.auditDiffCommand ? `\nDiff command:\n${extras.auditDiffCommand}\n` : ""}
 ${extras.projectRules ? `\nProject rules:\n${extras.projectRules.trim()}\n` : ""}
+${extras.gateContext ? `\nCurrent gate state:\n${JSON.stringify(extras.gateContext, null, 2)}\n` : ""}
 Node context:
 ${node ? JSON.stringify(node, null, 2) : "Run qd prompt audit <node> for node-specific context."}`;
   }
@@ -37,7 +40,7 @@ Protocol:
 - Inspect qd prompt implement <node> and current findings.
 - Make the smallest fix that satisfies the finding.
 - Mark each fixed finding with qd finding resolve.
-- Re-run qd gate before CI.`;
+- Re-run qd gate <node> --phase ci before CI.`;
   }
 
   return `Implement the claimed qd node.
@@ -48,8 +51,11 @@ Protocol:
 - Respect requires edges; do not work blocked nodes.
 - Use the node spec and acceptance as the scope boundary.
 - Record completion with qd complete.
+- If the node declares verification, record evidence with qd verification sign-off or qd verification run.
+- If qd gate reports nodeBlocked, stop and return the blocker reason to the orchestrator.
 - Prefer --json when parsing command output.
 ${extras.projectRules ? `\nProject rules:\n${extras.projectRules.trim()}\n` : ""}
+${extras.gateContext ? `\nCurrent gate state:\n${JSON.stringify(extras.gateContext, null, 2)}\n` : ""}
 
 Node context:
 ${node ? JSON.stringify(node, null, 2) : "Run qd prompt implement <node> for node-specific context."}`;
@@ -77,9 +83,9 @@ The point is not to make every subagent independently choose work from qd. The p
 During setup, configure qd for the repository's real definition of green:
 
 \`\`\`sh
-qd config set check-command --value "<fast project check command>"
-qd config set ci-command --value "<full project CI command>"
-qd config set merge-strategy --value "squash"
+qd config set check-command "<fast project check command>"
+qd config set ci-command "<full project CI command>"
+qd config set merge-strategy "squash"
 qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
 qd config get ci-command
 \`\`\`
@@ -100,10 +106,11 @@ Treat \`.qd/qd.db\` as a local cache, not shared state. The portable source of t
 
 \`\`\`sh
 qd export --out roadmap/spec-dag.json
-qd import --from roadmap/spec-dag.json
+qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json
 \`\`\`
 
-Use that export/import path when moving between machines, worktrees, or remote execution hosts. qd resolves \`--root\`, then \`QD_ROOT\`, then the nearest ancestor \`.qd/\`, so commands can be run from subdirectories after setup.
+Use that export/sync path when moving between machines, worktrees, or remote execution hosts. Use \`qd import\` for non-qd roadmap migrations or empty-DAG bootstrap. qd resolves \`--root\`, then \`QD_ROOT\`, then the nearest ancestor \`.qd/\`, so commands can be run from subdirectories after setup.
 
 Use \`qd snapshot --json\` when the orchestrator needs a compact state refresh with status, ready nodes, open findings, and critical path. Use \`qd prompt implement <id> --json\` when delegating so the subagent gets both the prompt text and structured node context.
 
@@ -117,9 +124,9 @@ qd nodes add-bulk --from-json roadmap/mint-plan.json
 qd node add --title "Scoped follow-up" --spec-file /tmp/spec.md --acceptance-file /tmp/acceptance.md
 \`\`\`
 
-Use \`qd finding list --open --severity P0,P1 --json\` as the active blocker dashboard. Use \`qd node show <id> --full --json\` before delegation or audit when the receiving agent needs notes, findings, and prior runs. Use \`qd diff <id> --self-only --base main\` when an audit should see only the node branch's own changes.
+Use \`qd finding list --open --severity P0,P1 --json\` as the active blocker dashboard. Use \`qd gate <id> --phase ci --json\` before CI and \`qd gate <id> --phase merge --json\` before merge so policy is included in \`ok\`. Use \`qd node show <id> --full --json\` before delegation or audit when the receiving agent needs notes, findings, and prior runs. Use \`qd diff <id> --self-only --base main\` when an audit should see only the node branch's own changes.
 
-For mature projects, import existing DAG state instead of recreating it manually:
+For mature projects, migrate non-qd roadmap state instead of recreating it manually:
 
 \`\`\`sh
 qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json --dry-run --json
@@ -147,13 +154,15 @@ qd milestone register --name "baseline" --rank 10
 6. Audit subagents review the completed node and the orchestrator records structured findings, preferably with \`qd audit pass <id> --from-report <file>\`.
 7. P0/P1 findings are resolved before checks. P2/P3 findings are promoted after the current node passes the gate.
 8. Manual verification gates are signed off with \`qd verification sign-off\` when the node declares them.
-9. The orchestrator runs \`qd check run <id>\` when a fast local preflight is useful.
-10. The orchestrator runs \`qd ci run <id>\` or \`qd ci poll <id>\` for the full merge gate; \`qd ci record-pass\` is only for recording an externally completed CI check with evidence.
-11. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses \`qd merge <id>\` only after qd marks the node mergeable.
+9. The orchestrator runs \`qd gate <id> --phase ci --json\` before CI when policy must be included in \`ok\`.
+10. The orchestrator runs \`qd check run <id>\` when a fast local preflight is useful.
+11. The orchestrator runs \`qd ci run <id>\` or \`qd ci poll <id>\` for the full merge gate; \`qd ci record-pass\` is only for recording an externally completed CI check with evidence.
+12. The orchestrator runs \`qd gate <id> --phase merge --json\` before recording merge state.
+13. The orchestrator performs the repo's real git/GitHub merge through the normal workflow, then uses \`qd merge <id> --use-existing-commit <sha>\` only after qd marks the node mergeable.
 
 \`qd merge\` records qd state only. It does not run \`git merge\`, squash commits, rebase, push, or open/merge a GitHub PR. For direct-to-main workflows, use \`qd merge <id> --use-existing-commit <sha>\` after the real merge so qd records the commit it represents.
 
-\`qd advance <id> --summary "..." \` can collapse the clean path through completion, gate, check, and CI. Add \`--merge\` only when it is correct to record qd's merge state.
+\`qd advance <id> --summary "..." \` can collapse the clean path through completion, gate, check, and CI. Record merge state only after the repository's real merge has happened.
 
 Never bypass the ready queue. If the graph is wrong, fix the graph.
 `;

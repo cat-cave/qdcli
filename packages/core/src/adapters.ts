@@ -50,7 +50,7 @@ export function adaptRoadmapHtml(content: string): AdapterOutput {
       title,
       status: statusFromHtmlSegment(segment),
       spec: htmlSpec(segment, title),
-      acceptance: htmlAcceptance(segment),
+      acceptance: htmlAcceptance(segment, title),
       milestone: phase || undefined,
       group_name: phase || undefined,
       status_reason: deps.length > 0 ? `Imported dependencies: ${deps.join(", ")}` : undefined,
@@ -159,11 +159,11 @@ function nearestOpenContainer(
   return openEnd >= 0 && openEnd < headingStart ? candidate : null;
 }
 
-function htmlAcceptance(segment: string): string {
+function htmlAcceptance(segment: string, title: string): string {
   const items = [...segment.matchAll(/<li\b[^>]*>(?<text>[\s\S]*?)<\/li>/gi)]
     .map((item) => textFromHtml(item.groups?.text ?? ""))
     .filter(Boolean);
-  return items.length > 0 ? items.join("\n") : htmlSpec(segment, "Imported roadmap card");
+  return items.length > 0 ? items.join("\n") : htmlSpec(segment, title);
 }
 
 function statusFromHtmlSegment(segment: string): NodeStatus {
@@ -191,7 +191,7 @@ function dependencyRefs(segment: string): string[] {
   const textRefs = [...textFromHtml(segment).matchAll(/depends?\s+on\s*:\s*([^.;]+)/gi)].flatMap(
     (match) => splitRefs(match[1] ?? ""),
   );
-  return [...new Set([...classRefs, ...dataRefs, ...textRefs])];
+  return uniqueRefs([...classRefs, ...dataRefs, ...textRefs]);
 }
 
 function firstClassText(segment: string, className: string): string | undefined {
@@ -234,6 +234,18 @@ function splitRefs(value: string): string[] {
     .split(/[,;]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function uniqueRefs(refs: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const ref of refs) {
+    const key = slugify(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(ref);
+  }
+  return unique;
 }
 
 function textFromHtml(value: string): string {

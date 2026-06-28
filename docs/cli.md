@@ -21,7 +21,7 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd export [--out <json>] [--deterministic] [--status ready,claimed] [--milestone <name>]`
 - `qd export --fields id,title,priority,status [--json|--tsv|--compact]`
 - `qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults] [--merge]`
-- `qd sync --from <qd-export.json>`
+- `qd sync --from <qd-export.json> [--dry-run]`
 - `qd velocity [--window 7]`
 - `qd critical-path [--milestone <name>]`
 - `qd eta [--window 7] [--milestone <name>]`
@@ -32,17 +32,17 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd milestone next <name> [--limit 10] [--json]`
 - `qd config show [--json]`
 - `qd config get <key>`
-- `qd config set check-command --value <command>`
-- `qd config set ci-command --value <command>`
+- `qd config set check-command <command>`
+- `qd config set ci-command <command>`
 - `qd prompt plan|implement|audit|resolve [node] [--json]`
 - `qd workspace status|ready|graph [--json] [--config <toml>] [--repo <path>]`
-- `qd advance <node> --summary <text> [--merge]`
+- `qd advance <node> --summary <text> [--merge --use-existing-commit <sha>]`
 - `qd diff <node> [--base main] [--self-only] [--working] [--tool git|sem|inspect] [--format markdown|json|plain]`
 
 Config read/write round trip:
 
 ```sh
-qd config set ci-command --value "<full project CI command>"
+qd config set ci-command "<full project CI command>"
 qd config get ci-command
 ```
 
@@ -54,15 +54,15 @@ Use `qd export` for qd-native shared state:
 
 ```sh
 qd export --out roadmap/spec-dag.json
-qd import --from roadmap/spec-dag.json
+qd sync --from roadmap/spec-dag.json --dry-run --json
 qd sync --from roadmap/spec-dag.json
 ```
 
 The exported JSON is the committed source of truth for sharing qd state across machines. `.qd/qd.db` remains a local rebuildable cache and should stay gitignored.
 
-qd-native exports include registries, nodes, edges, findings, runs, and node notes. They import without a mapping file.
+qd-native exports include registries, nodes, edges, findings, runs, and node notes. They sync without a mapping file.
 
-Use `qd export --deterministic --out roadmap/spec-dag.json` when the export is meant for a committed roadmap file and you want stable registry/export timestamps. Use `qd sync --from <qd-export.json>` to replace the local cache from a canonical qd export. `qd import --merge` is the equivalent explicit replace path for imports; plain `qd import` remains empty-DAG-only to prevent accidental mutation of an active graph.
+Use `qd export --deterministic --out roadmap/spec-dag.json` when the export is meant for a committed roadmap file and you want stable registry/export timestamps. Use `qd sync --from <qd-export.json> --dry-run --json` to validate the canonical export and inspect live-only, export-only, and changed nodes before replacing the local cache. Use `qd sync --from <qd-export.json>` to replace the local cache from a canonical qd export. `qd import --merge` is the equivalent explicit replace path for imports; plain `qd import` remains empty-DAG-only to prevent accidental mutation of an active graph.
 
 Use `qd import` for existing DAGs:
 
@@ -175,6 +175,15 @@ qd node edit xp3-fixture --clear-blocker --status ready
 
 Blocked nodes are excluded from `qd ready` by default even when all dependencies are complete. `blocked_by` is for manual, external, or policy blockers. It is not a replacement for dependency edges, audit findings, or failed CI runs.
 
+`qd gate <node> --json` returns stable `explanations[]` reason codes for practical blockers:
+
+- `blockingFinding`: an open P0/P1 finding exists.
+- `runningAudit`: an audit run is still running.
+- `nodeBlocked`: the node has explicit manual, external, or policy blocker metadata.
+- `blockedDependency`: a required dependency is not done.
+
+By default, `qd gate` reports the structural gate: P0/P1 findings, running audits, explicit blockers, and dependency blockers. Use `qd gate <node> --phase ci --json` or `qd gate <node> --phase merge --json` when deciding whether lifecycle policy allows that phase. In phase mode, `ok` includes both structural blockers and the selected policy report; `structuralOk` preserves the lower-level gate result.
+
 ## Workspace
 
 Workspace commands are read-only roll-ups across repo-local qd DAGs. They do not create nodes, claim work, record findings, or mutate another repository's DAG.
@@ -230,7 +239,7 @@ Env injection writes the configured env file inside the worktree and adds qd con
 - `qd finding dispose <finding> --disposition resolved|follow-up-node|promoted|dismissed|accepted-risk --rationale <text>`
 - `qd finding promote <finding> [--title <text>] [--acceptance <text>] [--verification type=command,value="<cmd>"]`
 - `qd promote-findings <node>`
-- `qd gate <node>`
+- `qd gate <node> [--phase ci|merge]`
 - `qd check run <node>`
 - `qd ci run <node>`
 - `qd ci poll <node> [--sha <commit>]`
@@ -254,7 +263,7 @@ Manual verification should be declared on the node with `--verify type=manual,va
 
 ## Advance And Diff
 
-`qd advance <node> --summary "..."` is a lifecycle shortcut for orchestrators. It records completion when needed, runs the P0/P1 gate, runs configured `check_command` and `ci_command` when present, and reports the step where it stopped. It does not perform a git or GitHub merge. Pass `--merge` only after the real repository merge has been performed or when recording qd's state transition is intentionally the next step.
+`qd advance <node> --summary "..."` is a lifecycle shortcut for orchestrators. It records completion when needed, runs the P0/P1 gate, runs configured `check_command` and `ci_command` when present, and reports the step where it stopped. It does not perform a git or GitHub merge. `--merge` requires `--use-existing-commit <sha>` and should only be used after the real repository merge has been performed.
 
 `qd diff <node> --self-only --base main` prints a diff from the node branch's merge-base with `main` to the node branch. This is useful when audit subagents need the branch's own change set without unrelated movement from an ahead main branch.
 
@@ -278,11 +287,11 @@ qd prompt audit <node> --diff-tool sem
 - `qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)`
 - `qd ci fail <node>`
 - `qd ci poll <node> [--provider github] [--repo owner/name] [--workflow ci.yml] [--sha <commit>]`
-- `qd merge <node> --strategy squash [--use-existing-commit <sha>]`
+- `qd merge <node> --use-existing-commit <sha> [--strategy squash|merge|rebase]`
 
-`qd merge` is a qd state transition, not a git operation and not a GitHub PR operation. It records a merge run and marks the node `done` only after qd confirms the node is mergeable, P0/P1 findings are closed, and the latest CI passed when `require_ci_before_merge = true`. Do the actual git merge, squash, rebase, or PR merge in your normal repo workflow before or around this command.
+`qd merge` is a qd state transition, not a git operation and not a GitHub PR operation. It records a merge run and marks the node `done` only after qd confirms the node is mergeable, P0/P1 findings are closed, and the latest CI passed when `require_ci_before_merge = true`. Do the actual git merge, squash, rebase, or PR merge in your normal repo workflow first, then record the merge in qd.
 
-For direct-to-main or external merge workflows, pass `--use-existing-commit <sha>` after the real merge has happened. qd stores that commit in the merge run summary so later `qd ci poll` can infer which commit to watch.
+For direct-to-main or external merge workflows, pass `--use-existing-commit <sha>` after the real merge has happened. qd stores that commit in the merge run summary so later `qd ci poll` can infer which commit to watch. `--strategy` is recorded workflow metadata; it does not make qd run that git strategy.
 
 Provider polling is adapter-based. The first adapter is GitHub through the `gh` CLI:
 

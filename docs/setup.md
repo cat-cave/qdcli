@@ -25,15 +25,6 @@ npm install -g @cat-cave/qdcli
 qd --version
 ```
 
-For qdcli development from source, install Vite+ first:
-
-```sh
-curl -fsSL https://vite.plus | bash
-vp help
-```
-
-Vite+ is not required for normal npm package usage.
-
 On NixOS, nix-darwin, or Home Manager, install the packaged CLI directly:
 
 ```sh
@@ -50,17 +41,11 @@ home.packages = [
 ];
 ```
 
-Current install from a clone:
+Source checkout setup is only for qdcli contributors, not for projects adopting qd:
 
 ```sh
-vp install
-vp run -r build
-vp pm --filter qdcli link --global
-```
-
-When developing qd itself, use the flake dev shell:
-
-```sh
+curl -fsSL https://vite.plus | bash
+vp help
 nix develop
 just install
 just ci
@@ -114,20 +99,21 @@ Treat `.qd/qd.db` as a local cache. Do not commit it. For shared state across ma
 qd export --out roadmap/spec-dag.json
 ```
 
-On another clone or machine, rebuild the local cache from the committed JSON:
+On another clone or machine, rebuild the local cache from the committed qd JSON with sync:
 
 ```sh
 qd setup --no-hooks
-qd import --from roadmap/spec-dag.json
+qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json
 ```
 
-`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd import` restores qd's canonical export format without a mapping file. Use `--schema-mapping` only when importing a non-qd source roadmap.
+`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd import --schema-mapping` only when importing a non-qd source roadmap or bootstrapping an empty qd DAG.
 
 Configure the local preflight command and the canonical green command:
 
 ```sh
-qd config set check-command --value "<fast project check command>"
-qd config set ci-command --value "<full project CI command>"
+qd config set check-command "<fast project check command>"
+qd config set ci-command "<full project CI command>"
 qd config get ci-command
 qd config get policy --json
 ```
@@ -152,9 +138,9 @@ Provider polling is optional. If no adapter fits the project, keep using `qd ci 
 If the repository uses git worktrees, configure the convention once:
 
 ```sh
-qd config set worktree-base-dir --value "../worktrees"
-qd config set worktree-env-template --value ".env.example"
-qd config set worktree-env-file --value ".env"
+qd config set worktree-base-dir "../worktrees"
+qd config set worktree-env-template ".env.example"
+qd config set worktree-env-file ".env"
 ```
 
 Then the orchestrator can run `qd worktree create <node> --branch spec/<node>` and get a checked-out branch plus a worktree-local env file. qd writes qd context variables into that env file, but it never stores env contents in the DAG database or committed export. Use `qd worktree status <node> --base main --json` to inspect dirty state, changed file count, merge-base, and ahead/behind state before dispatching auditors.

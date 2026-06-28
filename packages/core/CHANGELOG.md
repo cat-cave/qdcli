@@ -1,5 +1,16 @@
 # @cat-cave/qdcli-core
 
+## 0.1.15
+
+### Patch Changes
+
+- Harden qd for orchestrator-driven production use.
+
+  - Split the CLI, graph engine, and viewer into focused modules under the source line cap.
+  - Add strict command, schema, import, CI, lifecycle, worktree, and E2E coverage for practical qd flows.
+  - Raise repo-wide mutation confidence with Stryker and enforce project-wide source line limits through the Oxlint plugin.
+  - Improve CI polling, import mapping, node input, graph reporting, viewer, worktree, policy, and prompt surfaces.
+
 ## 0.1.14
 
 ### Patch Changes

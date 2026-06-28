@@ -16,11 +16,14 @@
   },
   "tsconfigFile": "tsconfig.json",
   "mutate": [
-    "packages/core/src/graph.ts",
-    "packages/core/src/db.ts",
-    "packages/core/src/workspace.ts"
+    "packages/core/src/**/*.ts",
+    "packages/cli/src/**/*.ts",
+    "!packages/**/*.test.ts",
+    "!packages/**/src/*fixtures.ts",
+    "!packages/core/src/index.ts",
+    "!packages/cli/src/prompts.ts"
   ],
-  "reporters": ["clear-text", "progress", "html"],
+  "reporters": ["clear-text", "progress", "html", "json"],
   "coverageAnalysis": "perTest",
   "thresholds": {
     "high": 80,
