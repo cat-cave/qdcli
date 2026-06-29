@@ -1,0 +1,200 @@
+.graphPanel {
+  background: #edf2f4;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.graphHeader {
+  background: #ffffff;
+  border-bottom: 1px solid #d6dee2;
+  min-height: 62px;
+  padding: 10px 14px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  justify-content: flex-end;
+}
+
+.legend span {
+  align-items: center;
+  color: #53646d;
+  display: inline-flex;
+  font-size: 0.78rem;
+  gap: 5px;
+}
+
+.legendLine {
+  display: inline-block;
+  height: 2px;
+  width: 24px;
+}
+
+.legendLine.requires {
+  background: #6e8791;
+}
+
+.legendLine.related {
+  background-image: linear-gradient(to right, #9aa8af 50%, transparent 50%);
+  background-size: 7px 2px;
+}
+
+.legendNode {
+  border: 2px solid #7659b6;
+  border-radius: 4px;
+  display: inline-block;
+  height: 14px;
+  width: 18px;
+}
+
+.dagCanvas {
+  flex: 1;
+  min-height: 0;
+  touch-action: none;
+  width: 100%;
+}
+
+.arrowHead {
+  fill: #6e8791;
+}
+
+.edge {
+  fill: none;
+  stroke: #8a9ca4;
+  stroke-linecap: round;
+  stroke-width: 2.2;
+  transition:
+    opacity 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease;
+}
+
+.edge.related,
+.edge.unblocks,
+.edge.supersedes {
+  stroke-dasharray: 7 6;
+}
+
+.edge.highlighted {
+  stroke: #287c94;
+  stroke-width: 3.4;
+}
+
+.edge.dimmed {
+  opacity: 0.14;
+}
+
+.graphNode {
+  outline: none;
+  transition: opacity 160ms ease;
+}
+
+.graphNode rect {
+  fill: #ffffff;
+  stroke: #b9c8cf;
+  stroke-width: 1.4;
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease;
+}
+
+.graphNode .nodeRail {
+  stroke: none;
+}
+
+.graphNode .nodeRail.P0 {
+  fill: #c74438;
+}
+
+.graphNode .nodeRail.P1 {
+  fill: #d98416;
+}
+
+.graphNode .nodeRail.P2 {
+  fill: #2c8558;
+}
+
+.graphNode .nodeRail.P3 {
+  fill: #6476bd;
+}
+
+.graphNode:hover rect,
+.graphNode:focus rect {
+  stroke: #2a829d;
+  stroke-width: 2.4;
+}
+
+.graphNode.selected rect {
+  stroke: #1c718f;
+  stroke-width: 3.2;
+}
+
+.graphNode.critical rect {
+  stroke: #7659b6;
+}
+
+.graphNode.dimmed {
+  opacity: 0.18;
+}
+
+.graphNode.done rect {
+  fill: #edf7f1;
+}
+
+.graphNode.ready rect {
+  fill: #ecf7f9;
+}
+
+.graphNode.blocked rect,
+.graphNode.regressed rect {
+  fill: #fff1df;
+}
+
+.graphNode.cancelled rect {
+  fill: #f0f2f3;
+}
+
+.graphNode.mergeable rect {
+  fill: #eff8e7;
+}
+
+.graphNode.ci rect,
+.graphNode.review rect,
+.graphNode.working rect,
+.graphNode.claimed rect,
+.graphNode.fixing rect {
+  fill: #f5f0ff;
+}
+
+.nodeId,
+.nodeStatus,
+.nodeMeta,
+.findingBadge {
+  fill: #5e7079;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.nodeStatus,
+.findingBadge {
+  text-anchor: end;
+}
+
+.nodeTitle {
+  fill: #172026;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.findingBadge {
+  fill: #9d2d25;
+}
+
+.findingBadge.neutral {
+  fill: #4d6570;
+}

@@ -8,6 +8,8 @@ The portable, committed source of truth is the qd JSON export:
 qd export --out roadmap/spec-dag.json
 ```
 
+Current qd exports use `schema_version: 2`. qd still accepts `schema_version: 1` exports from older qd releases and normalizes absent optional node fields to `null` or `[]`. Unknown future schema versions fail loudly.
+
 That export has `schema_version`, `exported_at`, `registries`, `nodes`, `edges`, `findings`, `runs`, `node_notes`, `assignments`, `waves`, and `wave_memberships`. A fresh clone can rebuild its local DB cache with:
 
 ```sh

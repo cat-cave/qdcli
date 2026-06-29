@@ -1,5 +1,5 @@
 import type { AnalyticsReport, GraphSnapshot, QdNode } from "@cat-cave/qdcli-core";
-import { milestoneProgress, statuses, type Filters } from "./viewer-model.js";
+import { layoutModes, milestoneProgress, statuses, type Filters } from "./viewer-model.js";
 
 export function Toolbar({
   snapshot,
@@ -88,6 +88,14 @@ export function Toolbar({
         value={filters.project}
         values={projects}
         onChange={(project) => onFilters({ ...filters, project })}
+      />
+      <FilterSelect
+        label="Layout"
+        value={filters.layoutMode}
+        values={[...layoutModes]}
+        onChange={(layoutMode) =>
+          onFilters({ ...filters, layoutMode: layoutMode as Filters["layoutMode"] })
+        }
       />
       <label className="checkLine">
         <input
@@ -221,6 +229,44 @@ export function HealthPanel({
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+export function CriticalPathPanel({
+  analytics,
+  selected,
+  onSelect,
+}: {
+  analytics: AnalyticsReport | null;
+  selected: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const nodes = analytics?.criticalPath.criticalPath ?? [];
+  return (
+    <section className="toolBlock queueBlock">
+      <div className="panelTitle">
+        <h2>Critical Path</h2>
+        <span>{analytics ? `${analytics.criticalPath.criticalPathPoints} pts` : "n/a"}</span>
+      </div>
+      {nodes.length === 0 ? (
+        <p className="emptyState">No remaining critical path nodes.</p>
+      ) : (
+        nodes.slice(0, 10).map((node, index) => (
+          <button
+            key={node.id}
+            type="button"
+            className={selected === node.id ? "pathItem selectedPathItem" : "pathItem"}
+            onClick={() => onSelect(node.id)}
+          >
+            <span>{index + 1}</span>
+            <strong>{node.id}</strong>
+            <small>
+              {node.estimatePoints} pts - {node.title}
+            </small>
+          </button>
+        ))
+      )}
     </section>
   );
 }

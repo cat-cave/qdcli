@@ -46,10 +46,11 @@ For another clone, worktree, or remote execution host that already has a committ
 
 ```sh
 qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json --dry-run --write-diff roadmap/sync-diff.json --json
 qd sync --from roadmap/spec-dag.json
 ```
 
-Use `qd import` for migration from non-qd roadmap formats or for bootstrapping an empty qd DAG. Use `qd sync` for replacing the local cache from committed qd JSON. Treat changed, live-only, and export-only nodes from dry-run output as reviewable migration output. Do not ask the user to commit `.qd/qd.db`. After qd mutations that should be shared, export and commit the JSON snapshot:
+Use `qd import` for migration from non-qd roadmap formats or for bootstrapping an empty qd DAG. Use `qd sync` for replacing the local cache from committed qd JSON. Treat changed, live-only, and export-only nodes from dry-run output as reviewable migration output. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` before orchestration when the local cache must already match the committed JSON; if it fails, stop and inspect the drift instead of starting work from ambiguous state. Do not ask the user to commit `.qd/qd.db`. After qd mutations that should be shared, export and commit the JSON snapshot:
 
 ```sh
 qd export --deterministic --out roadmap/spec-dag.json
@@ -85,7 +86,7 @@ qd ready --json
 qd snapshot --json
 ```
 
-If `qd doctor` reports config or graph errors, fix those before delegating work. Use normal `qd doctor` for advisory setup checks during migration. Use `qd doctor --strict` in dogfood repositories that want warnings such as unregistered metadata or incomplete blocker records to fail.
+If `qd doctor` reports stale schema, run `qd migrate --json` and rerun doctor before any normal DAG command. If `qd doctor` reports config or graph errors, fix those before delegating work. Use normal `qd doctor` for advisory setup checks during migration. Use `qd doctor --strict` in dogfood repositories that want warnings such as unregistered metadata or incomplete blocker records to fail.
 
 You may run qd from a subdirectory. qd resolves `--root`, then `QD_ROOT`, then the nearest ancestor `.qd/` directory.
 
@@ -154,7 +155,7 @@ qd claim <node> --agent <subagent-name>
 qd prompt implement <node> --json
 ```
 
-Delegate the implementation prompt and project context to a subagent. When the subagent completes work, record it:
+The orchestrator owns node selection. Subagents should not independently pop arbitrary ready work unless the user intentionally designs a distributed execution harness around qd's ownership records. In the normal workflow, the orchestrator chooses a bounded set of ready nodes, delegates those specs, then records results. Delegate the implementation prompt and project context to a subagent. When the subagent completes work, record it:
 
 ```sh
 qd complete <node> --summary "<what changed>"

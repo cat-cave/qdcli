@@ -117,7 +117,7 @@ describe("object utility contracts", () => {
   it("recognizes canonical snapshots and formats unknown values", () => {
     expect(canonicalSnapshotFrom({})).toBeUndefined();
     expect(canonicalSnapshotFrom(null)).toBeUndefined();
-    expect(() => canonicalSnapshotFrom({ schema_version: 2 })).toThrow(/Unsupported/);
+    expect(() => canonicalSnapshotFrom({ schema_version: 3 })).toThrow(/Unsupported/);
     expect(() => canonicalSnapshotFrom({ schema_version: 1, registries: [] })).toThrow(
       /registries/,
     );
@@ -134,7 +134,37 @@ describe("object utility contracts", () => {
       runs: [],
       node_notes: [],
     });
-    expect(snapshot).toMatchObject({ schema_version: 1, assignments: [], waves: [] });
+    expect(snapshot).toMatchObject({ schema_version: 2, assignments: [], waves: [] });
+    const oldSnapshot = canonicalSnapshotFrom({
+      schema_version: 1,
+      exported_at: "2026-06-28T00:00:00.000Z",
+      registries: { groups: [], projects: [], milestones: [] },
+      nodes: [
+        {
+          id: "old",
+          title: "Old export",
+          kind: "feature",
+          status: "ready",
+          priority: "P2",
+          estimate_points: 1,
+          risk: "medium",
+          spec: "Do the work",
+          acceptance: "The work is done",
+          created_at: "2026-06-28T00:00:00.000Z",
+          updated_at: "2026-06-28T00:00:00.000Z",
+        },
+      ],
+      edges: [],
+      findings: [],
+      runs: [],
+      node_notes: [],
+    });
+    expect(oldSnapshot?.nodes[0]).toMatchObject({
+      blocked_by: null,
+      blocked_reason: null,
+      verification: [],
+      audit_focus: [],
+    });
     expect(() =>
       canonicalSnapshotFrom({
         schema_version: 1,

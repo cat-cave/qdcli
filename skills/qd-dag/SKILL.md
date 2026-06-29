@@ -39,6 +39,16 @@ The default opinion is strict:
 
 Change these only when the repository genuinely needs a different operating model, and record why with `qd node note <id> --text "..."` or in project docs.
 
+Treat `.qd/qd.db` as a local cache. The durable shared artifact is qd's deterministic JSON export:
+
+```sh
+qd export --deterministic --out roadmap/spec-dag.json
+qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json --expect-clean --json
+```
+
+Use `qd sync --expect-clean` before starting orchestration from a committed export when the local cache should already match it. If qd reports drift, inspect the dry-run output or write a diff artifact with `--write-diff <json>`; do not start delegating work from ambiguous DAG state. Use plain `qd sync --from <file>` only when intentionally replacing the local cache from the committed JSON.
+
 For mature projects, migrate non-qd roadmap state instead of recreating it manually:
 
 ```sh

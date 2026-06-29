@@ -17,11 +17,12 @@ import type {
   QdWaveMembership,
   RegistryEntry,
 } from "./types.js";
+import { QD_EXPORT_SCHEMA_VERSION as CURRENT_EXPORT_SCHEMA_VERSION } from "./types.js";
 
 export async function graphSnapshot(root: string): Promise<GraphSnapshot> {
   const db = await openDatabase(root);
   return {
-    schema_version: 1,
+    schema_version: CURRENT_EXPORT_SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
     registries: {
       groups: await listRegistrySnapshot(root, "groups"),

@@ -1,8 +1,20 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { defaultConfig, formatConfig, parseConfig, readConfig, writeConfig } from "./db.js";
+import {
+  defaultConfig,
+  exec,
+  formatConfig,
+  migrateProject,
+  openDatabase,
+  parseConfig,
+  readConfig,
+  run,
+  schemaStatusForRoot,
+  writeConfig,
+} from "./db.js";
+import { migrations } from "./schema.js";
 
 describe("config", () => {
   it("round-trips CI provider settings", () => {
@@ -254,6 +266,33 @@ require_ci_before_merge = true
       await writeFile(configPath, "not toml\n", "utf8");
 
       await expect(readConfig(root)).rejects.toThrow(/\.qd\/config\.toml: line 1/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports stale DB schemas and migrates them in place", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "qdcli-stale-schema-"));
+    try {
+      await mkdir(path.join(root, ".qd"), { recursive: true });
+      const db = await openDatabase(root, { skipSchemaCheck: true });
+      for (const migration of migrations.slice(0, -1)) {
+        for (const statement of migration.statements) await exec(db, statement);
+        await run(db, "insert into schema_migrations (id, applied_at) values (?, ?)", [
+          migration.id,
+          "1970-01-01T00:00:00.000Z",
+        ]);
+      }
+
+      const before = await schemaStatusForRoot(root);
+      expect(before.ok).toBe(false);
+      expect(before.missing).toEqual([migrations.at(-1)!.id]);
+      await expect(openDatabase(root)).rejects.toThrow(/Run qd migrate/);
+
+      const after = await migrateProject(root);
+      expect(after.ok).toBe(true);
+      expect(after.missing).toEqual([]);
+      await expect(openDatabase(root)).resolves.toBeTruthy();
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -104,10 +104,11 @@ On another clone or machine, rebuild the local cache from the committed qd JSON 
 ```sh
 qd setup --no-hooks
 qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json --dry-run --write-diff roadmap/sync-diff.json --json
 qd sync --from roadmap/spec-dag.json
 ```
 
-`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd import --schema-mapping` only when importing a non-qd source roadmap or bootstrapping an empty qd DAG.
+`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` in automation when the local cache is expected to already match the committed JSON; qd exits non-zero with a drift summary rather than silently rewriting state. Use `qd import --schema-mapping` only when importing a non-qd source roadmap or bootstrapping an empty qd DAG.
 
 Configure the local preflight command and the canonical green command:
 
@@ -171,6 +172,15 @@ qd doctor
 qd status
 qd ready
 ```
+
+If doctor reports that the DB schema is older than the current qd binary, run:
+
+```sh
+qd migrate --json
+qd doctor --json
+```
+
+`qd migrate` applies pending schema changes in place. It is the normal upgrade path for existing `.qd/qd.db` caches; do not delete the DB and reimport unless the user explicitly chooses that recovery path.
 
 `qd doctor` should check:
 

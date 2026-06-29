@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { openDatabase, run } from "@cat-cave/qdcli-core";
 import {
   expectQdFailure,
   installCliFixture,
@@ -19,6 +20,10 @@ describe("qd CLI config and lifecycle surfaces", () => {
     expect(await qd()).toContain("Quick DAG CLI");
     expect(await qd("--help")).toContain("Core:");
     expect(await qd("complete", "--help")).toContain("qd complete");
+    expect(await qd("init", "--help")).toContain("applies current DB migrations");
+    expect(await qd("import", "--help")).toContain("--schema-mapping");
+    expect(await qd("sync", "--help")).toContain("--expect-clean");
+    expect(await qd("migrate", "--help")).toContain("pending qd DB schema migrations");
     expect(await qd("advance", "--help")).toContain("qd advance");
     expect(await qd("check", "--help")).toContain("qd check run");
     expect(await qd("ci", "--help")).toContain("qd ci");
@@ -329,6 +334,28 @@ describe("qd CLI config and lifecycle surfaces", () => {
       expect(JSON.parse(doctor.stdout).ok).toBe(false);
     } finally {
       await rm(badDoctorRoot, { recursive: true, force: true });
+    }
+
+    const staleRoot = await mkdtemp(path.join(os.tmpdir(), "qdcli-e2e-stale-schema-"));
+    try {
+      await qdAt(staleRoot, "setup", "--no-hooks");
+      const db = await openDatabase(staleRoot, { skipSchemaCheck: true });
+      await run(db, "delete from schema_migrations where id = ?", ["007_orchestration_state"]);
+      const doctor = await qdRaw(["--root", staleRoot, "doctor", "--json"]);
+      expect(doctor.exitCode).toBe(1);
+      const payload = JSON.parse(doctor.stdout) as {
+        ok: boolean;
+        checks: { schema: boolean };
+        errors: string[];
+      };
+      expect(payload.ok).toBe(false);
+      expect(payload.checks.schema).toBe(false);
+      expect(payload.errors.join("\n")).toContain("Run qd migrate");
+      await expect(
+        qdRaw(["--root", staleRoot, "status", "--json"]).then((result) => result.stderr),
+      ).resolves.toContain("Run qd migrate");
+    } finally {
+      await rm(staleRoot, { recursive: true, force: true });
     }
   });
 });

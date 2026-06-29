@@ -1,5 +1,13 @@
 # @cat-cave/qdcli
 
+## 0.1.16
+
+### Patch Changes
+
+- Ship qd 0.1.16 with in-place DB migration support, stale-schema doctor checks, stricter canonical JSON sync dry-runs, v1-to-v2 qd export compatibility, richer viewer layouts, sync drift artifacts, and an 81% mutation-testing release ratchet.
+- Updated dependencies
+  - @cat-cave/qdcli-core@0.1.16
+
 ## 0.1.15
 
 ### Patch Changes

@@ -170,8 +170,89 @@ describe("qd CLI edit and sync surfaces", () => {
     expect(dryRun.ok).toBe(true);
     expect(dryRun.dryRun).toBe(true);
     expect(dryRun.wouldReplace).toBe(true);
+    expect(dryRun.action).toBe("replace-local-cache");
+    expect(dryRun.summary).toBe("1 changed node(s)");
     expect(dryRun.diff.changedNodes).toEqual(["manual-hardening"]);
     expect((await qdJson("node", "show", "manual-hardening", "--json")).status).toBe("ready");
+
+    const diffArtifact = await qdJson(
+      "sync",
+      "--from",
+      "roadmap/spec-dag.json",
+      "--dry-run",
+      "--write-diff",
+      "roadmap/sync-diff.json",
+      "--json",
+    );
+    const writtenDiff = JSON.parse(
+      await readFile(path.join(root, "roadmap/sync-diff.json"), "utf8"),
+    ) as {
+      summary: string;
+      diff: { changedNodes: string[] };
+    };
+    expect(diffArtifact.summary).toBe("1 changed node(s)");
+    expect(writtenDiff.summary).toBe("1 changed node(s)");
+    expect(writtenDiff.diff.changedNodes).toEqual(["manual-hardening"]);
+    await expectQdFailure(
+      /qd sync --expect-clean found drift: 1 changed node/,
+      "sync",
+      "--from",
+      "roadmap/spec-dag.json",
+      "--expect-clean",
+      "--json",
+    );
+
+    const oldExport = JSON.parse(JSON.stringify(snapshot)) as {
+      schema_version: number;
+      nodes: Array<Record<string, unknown>>;
+    };
+    oldExport.schema_version = 1;
+    for (const node of oldExport.nodes) {
+      delete node.blocked_by;
+      delete node.blocked_reason;
+      delete node.blocked_owner;
+      delete node.check_command;
+      delete node.ci_command;
+      delete node.verification;
+      delete node.audit_focus;
+    }
+    await writeFile(
+      path.join(root, "roadmap/old-spec-dag.json"),
+      `${JSON.stringify(oldExport, null, 2)}\n`,
+      "utf8",
+    );
+    const oldDryRun = await qdJson(
+      "sync",
+      "--from",
+      "roadmap/old-spec-dag.json",
+      "--dry-run",
+      "--json",
+    );
+    expect(oldDryRun.ok).toBe(true);
+    expect(oldDryRun.nodes).toBe(1);
+
+    const invalidDryRunSnapshot = JSON.parse(JSON.stringify(snapshot)) as {
+      nodes: Array<Record<string, unknown>>;
+    };
+    invalidDryRunSnapshot.nodes[0] = {
+      ...invalidDryRunSnapshot.nodes[0],
+      status: "blocked",
+      blocked_by: "manual",
+      blocked_reason: null,
+    };
+    await writeFile(
+      path.join(root, "roadmap/invalid-dry-run-spec-dag.json"),
+      `${JSON.stringify(invalidDryRunSnapshot, null, 2)}\n`,
+      "utf8",
+    );
+    await expectQdFailure(
+      /blocked_reason is required when blocked_by is set/,
+      "sync",
+      "--from",
+      "roadmap/invalid-dry-run-spec-dag.json",
+      "--dry-run",
+      "--json",
+    );
 
     const brokenSnapshot = JSON.parse(JSON.stringify(snapshot)) as {
       edges: Array<Record<string, unknown>>;
@@ -207,10 +288,22 @@ describe("qd CLI edit and sync surfaces", () => {
     const synced = await qdJson("sync", "--from", "roadmap/spec-dag.json", "--json");
     expect(synced.ok).toBe(true);
     expect(synced.replaced).toBe(true);
+    expect(synced.action).toBe("replaced-local-cache");
     const node = await qdJson("node", "show", "manual-hardening", "--json");
     expect(node.status).toBe("blocked");
     expect(node.blocked_by).toBe("manual");
     expect(node.blocked_reason).toBe("Requires owner console access before proceeding.");
+    const clean = await qdJson(
+      "sync",
+      "--from",
+      "roadmap/spec-dag.json",
+      "--expect-clean",
+      "--json",
+    );
+    expect(clean.ok).toBe(true);
+    expect(clean.replaced).toBe(false);
+    expect(clean.action).toBe("none");
+    expect(clean.summary).toBe("no drift");
     await configureStrictDoctorCommands();
     expect((await qdJson("doctor", "--strict", "--json")).ok).toBe(true);
   });

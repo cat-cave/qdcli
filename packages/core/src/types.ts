@@ -35,6 +35,9 @@ export type NoteKind =
   | "risk-acceptance"
   | "migration-note";
 
+export const QD_EXPORT_SCHEMA_VERSION = 2;
+export const SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS = [1, QD_EXPORT_SCHEMA_VERSION] as const;
+
 export interface VerificationEntry {
   type: VerificationType;
   value: string;

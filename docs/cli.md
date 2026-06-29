@@ -11,6 +11,7 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 
 - `qd init`
 - `qd setup`
+- `qd migrate`
 - `qd doctor [--strict] [--json]`
 - `qd status [--json]`
 - `qd stats [--json] [--window 7] [--milestone <name>]`
@@ -21,7 +22,7 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd export [--out <json>] [--deterministic] [--status ready,claimed] [--milestone <name>]`
 - `qd export --fields id,title,priority,status [--json|--tsv|--compact]`
 - `qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults] [--merge]`
-- `qd sync --from <qd-export.json> [--dry-run]`
+- `qd sync --from <qd-export.json> [--dry-run] [--expect-clean] [--write-diff <json>]`
 - `qd velocity [--window 7]`
 - `qd critical-path [--milestone <name>]`
 - `qd eta [--window 7] [--milestone <name>]`
@@ -48,6 +49,18 @@ qd config get ci-command
 
 For agent-facing JSON output, see [JSON Contract](./json.md).
 
+## Migration
+
+Run `qd migrate` after upgrading qd when `qd doctor` reports that the local DB schema is older than the current binary:
+
+```sh
+qd doctor --json
+qd migrate --json
+qd doctor --json
+```
+
+`qd migrate` applies pending qd DB migrations in place. It is not a DAG import and it does not replace `.qd/qd.db` from JSON. Use it before normal commands when a stale local cache would otherwise report `DB schema is older than this qd binary`.
+
 ## Import
 
 Use `qd export` for qd-native shared state:
@@ -55,6 +68,7 @@ Use `qd export` for qd-native shared state:
 ```sh
 qd export --out roadmap/spec-dag.json
 qd sync --from roadmap/spec-dag.json --dry-run --json
+qd sync --from roadmap/spec-dag.json --dry-run --write-diff roadmap/sync-diff.json --json
 qd sync --from roadmap/spec-dag.json
 ```
 
@@ -62,7 +76,7 @@ The exported JSON is the committed source of truth for sharing qd state across m
 
 qd-native exports include registries, nodes, edges, findings, runs, and node notes. They sync without a mapping file.
 
-Use `qd export --deterministic --out roadmap/spec-dag.json` when the export is meant for a committed roadmap file and you want stable registry/export timestamps. Use `qd sync --from <qd-export.json> --dry-run --json` to validate the canonical export and inspect live-only, export-only, and changed nodes before replacing the local cache. Use `qd sync --from <qd-export.json>` to replace the local cache from a canonical qd export. `qd import --merge` is the equivalent explicit replace path for imports; plain `qd import` remains empty-DAG-only to prevent accidental mutation of an active graph.
+Use `qd export --deterministic --out roadmap/spec-dag.json` when the export is meant for a committed roadmap file and you want stable registry/export timestamps. Use `qd sync --from <qd-export.json> --dry-run --json` to validate the canonical export and inspect live-only, export-only, and changed nodes before replacing the local cache. Add `--write-diff <json>` when an orchestrator should leave a reviewable drift artifact. Add `--expect-clean` in automation when the local cache must already match the committed JSON; qd exits non-zero with a drift summary instead of rewriting state. Use `qd sync --from <qd-export.json>` to replace the local cache from a canonical qd export. `qd import --merge` is the equivalent explicit replace path for imports; plain `qd import` remains empty-DAG-only to prevent accidental mutation of an active graph.
 
 Use `qd import` for existing DAGs:
 

@@ -5,8 +5,10 @@ import {
   criticalPathReport,
   deterministicGraphSnapshot,
   graphSnapshot,
+  migrateProject,
   readConfig,
   readyNodes,
+  schemaStatusForRoot,
   stats,
   validateGraph,
   workspaceGraph,
@@ -27,7 +29,14 @@ export async function doctorCommand(
   json: boolean,
 ): Promise<void> {
   const strict = Boolean(options.strict);
-  const validationResult = await validateGraph(root, { strict });
+  const schema = await schemaStatusForRoot(root);
+  const validationResult = schema.ok
+    ? await validateGraph(root, { strict })
+    : {
+        ok: false,
+        errors: [`DB schema is older than this qd binary. Run qd migrate.`],
+        warnings: [],
+      };
   const config = await readConfig(root);
   const configErrors: string[] = [];
   const configWarnings: string[] = [];
@@ -46,14 +55,15 @@ export async function doctorCommand(
     if (config.ciAuth !== "gh-cli") configErrors.push("ci_auth must be gh-cli");
   }
   const result = {
-    ok: validationResult.ok && configErrors.length === 0,
+    ok: schema.ok && validationResult.ok && configErrors.length === 0,
     strict,
     checks: {
       initialized: true,
-      schema: true,
+      schema: schema.ok,
       graph: validationResult.ok,
       config: configErrors.length === 0,
     },
+    schema,
     runtime: {
       sourceCheckout,
       viewer,
@@ -65,6 +75,21 @@ export async function doctorCommand(
   };
   output(result, json);
   if (!result.ok) process.exitCode = 1;
+}
+
+export async function migrateCommand(root: string, json: boolean): Promise<void> {
+  const before = await schemaStatusForRoot(root);
+  const after = await migrateProject(root);
+  output(
+    {
+      ok: after.ok,
+      before,
+      after,
+      applied: before.missing.filter((id) => after.applied.includes(id)),
+    },
+    json,
+  );
+  if (!after.ok) process.exitCode = 1;
 }
 
 export async function configCommand(

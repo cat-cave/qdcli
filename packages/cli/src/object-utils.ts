@@ -1,4 +1,10 @@
-import type { GraphSnapshot, VerificationEntry } from "@cat-cave/qdcli-core";
+import {
+  QD_EXPORT_SCHEMA_VERSION,
+  SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS,
+  type GraphSnapshot,
+  type QdNode,
+  type VerificationEntry,
+} from "@cat-cave/qdcli-core";
 
 export function parseVerification(value: string): VerificationEntry {
   const fields = Object.fromEntries(
@@ -82,7 +88,7 @@ export function strictVerificationArrayAt(
 
 export function canonicalSnapshotFrom(source: unknown): GraphSnapshot | undefined {
   if (!isRecord(source) || source.schema_version === undefined) return undefined;
-  if (source.schema_version !== 1) {
+  if (!SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS.includes(source.schema_version as 1 | 2)) {
     throw new Error(
       `Unsupported qd export schema_version: ${formatUnknown(source.schema_version)}`,
     );
@@ -90,14 +96,16 @@ export function canonicalSnapshotFrom(source: unknown): GraphSnapshot | undefine
   const registries = valueAtPath(source, "registries");
   if (!isRecord(registries)) throw new Error("qd export registries must be an object");
   return {
-    schema_version: 1,
+    schema_version: QD_EXPORT_SCHEMA_VERSION,
     exported_at: requiredStringField(source, "exported_at"),
     registries: {
       groups: requiredArrayField(registries, "groups"),
       projects: requiredArrayField(registries, "projects"),
       milestones: requiredArrayField(registries, "milestones"),
     },
-    nodes: requiredArrayField(source, "nodes"),
+    nodes: requiredArrayField(source, "nodes").map((node, index) =>
+      normalizeCanonicalNode(node, index),
+    ),
     edges: requiredArrayField(source, "edges"),
     findings: requiredArrayField(source, "findings"),
     runs: requiredArrayField(source, "runs"),
@@ -106,6 +114,30 @@ export function canonicalSnapshotFrom(source: unknown): GraphSnapshot | undefine
     waves: optionalArrayField(source, "waves"),
     wave_memberships: optionalArrayField(source, "wave_memberships"),
   } as GraphSnapshot;
+}
+
+function normalizeCanonicalNode(node: unknown, index: number): QdNode {
+  if (!isRecord(node)) throw new Error(`qd export nodes[${index}] must be an object`);
+  return {
+    ...node,
+    milestone: node.milestone ?? null,
+    group_name: node.group_name ?? null,
+    projects: node.projects ?? [],
+    owner: node.owner ?? null,
+    branch: node.branch ?? null,
+    validation: node.validation ?? null,
+    verification: node.verification ?? [],
+    audit_focus: node.audit_focus ?? [],
+    context: node.context ?? null,
+    status_reason: node.status_reason ?? null,
+    check_command: node.check_command ?? null,
+    ci_command: node.ci_command ?? null,
+    blocked_by: node.blocked_by ?? null,
+    blocked_reason: node.blocked_reason ?? null,
+    blocked_owner: node.blocked_owner ?? null,
+    claimed_at: node.claimed_at ?? null,
+    done_at: node.done_at ?? null,
+  } as QdNode;
 }
 
 export function asRecord(value: unknown, context: string): Record<string, unknown> {

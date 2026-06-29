@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { AnalyticsReport, GraphSnapshot } from "@cat-cave/qdcli-core";
 import "./styles.css";
 import {
+  boundsForLayoutNodes,
   buildLayout,
   emptySnapshot,
   fitBounds,
@@ -17,6 +18,7 @@ import {
 } from "./viewer-model.js";
 import {
   HealthPanel,
+  CriticalPathPanel,
   MetricStrip,
   ReadyQueue,
   TriagePanel,
@@ -39,6 +41,7 @@ function App() {
     milestone: "all",
     group: "all",
     project: "all",
+    layoutMode: "dependencies",
     dimFiltered: true,
     focusSelection: true,
   }));
@@ -103,8 +106,8 @@ function App() {
 
   const layout = useMemo(() => {
     if (!snapshot) return null;
-    return buildLayout(snapshot, renderedNodeIds);
-  }, [renderedNodeIds, snapshot]);
+    return buildLayout(snapshot, renderedNodeIds, filters.layoutMode);
+  }, [filters.layoutMode, renderedNodeIds, snapshot]);
 
   useEffect(() => {
     if (layout) setViewport(fitBounds(layout.bounds));
@@ -128,6 +131,20 @@ function App() {
     () => (snapshot && selected ? neighborhood(snapshot, selected) : new Set<string>()),
     [selected, snapshot],
   );
+  const selectedBounds = useMemo(() => {
+    if (!layout || !selected || !filters.focusSelection) return null;
+    return boundsForLayoutNodes(layout.nodes.filter((item) => neighborIds.has(item.node.id)));
+  }, [filters.focusSelection, layout, neighborIds, selected]);
+
+  useEffect(() => {
+    if (selectedBounds) setViewport(fitBounds(selectedBounds));
+  }, [
+    selected,
+    selectedBounds?.height,
+    selectedBounds?.width,
+    selectedBounds?.x,
+    selectedBounds?.y,
+  ]);
 
   if (!snapshot || !layout || !viewport) {
     return <main className="loading">Loading qd graph...</main>;
@@ -168,6 +185,7 @@ function App() {
             error={error}
           />
           <HealthPanel snapshot={snapshot} analytics={analytics} />
+          <CriticalPathPanel analytics={analytics} selected={selected} onSelect={setSelected} />
           <TriagePanel snapshot={snapshot} selected={selected} onSelect={setSelected} />
           <ReadyQueue ready={ready} selected={selected} onSelect={setSelected} />
           <WavePanel snapshot={snapshot} selected={selected} onSelect={setSelected} />

@@ -17,6 +17,7 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          packageJson = builtins.fromJSON (builtins.readFile ./packages/cli/package.json);
           nodejs = pkgs.nodejs_24;
           pnpm = pkgs.pnpm_11;
           src = pkgs.lib.fileset.toSource {
@@ -37,7 +38,7 @@
           };
           qd = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "qd";
-            version = "0.1.10";
+            version = packageJson.version;
 
             inherit src;
 

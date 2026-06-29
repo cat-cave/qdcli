@@ -8,6 +8,16 @@ export { defaultConfig, formatConfig, parseConfig, type QdConfig } from "./confi
 
 export type Database = Awaited<ReturnType<typeof connect>>;
 
+export const expectedSchemaMigration = migrations.at(-1)?.id ?? "000_none";
+
+export interface SchemaStatus {
+  ok: boolean;
+  initialized: boolean;
+  expected: string;
+  applied: string[];
+  missing: string[];
+}
+
 export interface ProjectPaths {
   root: string;
   qdDir: string;
@@ -135,7 +145,7 @@ env_file = ".env"
     paths.agentsPath,
     `# qd agent bootstrap\n\nRead the qd DAG skill, run \`qd doctor\`, inspect \`qd status\` and \`qd ready\`, then help build or complete the DAG.\n`,
   );
-  const db = await openDatabase(root);
+  const db = await openDatabase(root, { skipSchemaCheck: true });
   await applyMigrations(db);
   return paths;
 }
@@ -165,14 +175,27 @@ export async function writeConfig(root: string, config: QdConfig): Promise<void>
   await writeFile(paths.configPath, formatConfig(config), "utf8");
 }
 
-export async function openDatabase(root = process.cwd()): Promise<Database> {
+export async function openDatabase(
+  root = process.cwd(),
+  options: { skipSchemaCheck?: boolean } = {},
+): Promise<Database> {
   const paths = getProjectPaths(root);
   const db = await connect(paths.dbPath);
   await exec(db, "pragma foreign_keys = on");
+  if (!options.skipSchemaCheck) await assertSchemaCurrent(db);
   return db;
 }
 
-export async function applyMigrations(db: Database): Promise<void> {
+export async function migrateProject(root = process.cwd()): Promise<SchemaStatus> {
+  const paths = getProjectPaths(root);
+  await mkdir(paths.qdDir, { recursive: true });
+  await mkdir(paths.logsDir, { recursive: true });
+  const db = await openDatabase(root, { skipSchemaCheck: true });
+  await applyMigrations(db);
+  return schemaStatus(db);
+}
+
+export async function applyMigrations(db: Database): Promise<string[]> {
   await exec(
     db,
     `create table if not exists schema_migrations (
@@ -181,6 +204,7 @@ export async function applyMigrations(db: Database): Promise<void> {
     )`,
   );
 
+  const appliedIds: string[] = [];
   for (const migration of migrations) {
     const applied = await get<{ id: string }>(db, "select id from schema_migrations where id = ?", [
       migration.id,
@@ -193,7 +217,49 @@ export async function applyMigrations(db: Database): Promise<void> {
       migration.id,
       new Date().toISOString(),
     ]);
+    appliedIds.push(migration.id);
   }
+  return appliedIds;
+}
+
+export async function schemaStatusForRoot(root = process.cwd()): Promise<SchemaStatus> {
+  return schemaStatus(await openDatabase(root, { skipSchemaCheck: true }));
+}
+
+export async function assertSchemaCurrent(db: Database): Promise<void> {
+  const status = await schemaStatus(db);
+  if (status.ok) return;
+  const detail = status.initialized
+    ? `missing migration(s): ${status.missing.join(", ")}`
+    : "no schema_migrations table found";
+  throw new Error(`DB schema is older than this qd binary (${detail}). Run qd migrate.`);
+}
+
+async function schemaStatus(db: Database): Promise<SchemaStatus> {
+  const initialized = await tableExists(db, "schema_migrations");
+  const applied = initialized
+    ? (await all<{ id: string }>(db, "select id from schema_migrations order by id asc")).map(
+        (row) => row.id,
+      )
+    : [];
+  const appliedSet = new Set(applied);
+  const missing = migrations.map((migration) => migration.id).filter((id) => !appliedSet.has(id));
+  return {
+    ok: initialized && missing.length === 0,
+    initialized,
+    expected: expectedSchemaMigration,
+    applied,
+    missing,
+  };
+}
+
+async function tableExists(db: Database, name: string): Promise<boolean> {
+  const row = await get<{ name: string }>(
+    db,
+    "select name from sqlite_master where type = 'table' and name = ?",
+    [name],
+  );
+  return Boolean(row);
 }
 
 export async function exec(db: Database, sql: string): Promise<void> {

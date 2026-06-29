@@ -81,6 +81,7 @@ import {
   doctorCommand,
   exportCommand,
   graphCommand,
+  migrateCommand,
   readyCommand,
   snapshotCommand,
   statusCommand,
@@ -151,6 +152,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       );
     case "doctor":
       return doctorCommand(root, args.options, json);
+    case "migrate":
+    case "upgrade":
+      return migrateCommand(root, json);
     case "status":
       return statusCommand(root, json);
     case "ready":

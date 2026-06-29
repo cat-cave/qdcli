@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   addNodesBulk,
@@ -11,6 +11,7 @@ import {
   validateGraphSnapshotForWrite,
   type EdgeType,
   type GraphSnapshot,
+  QD_EXPORT_SCHEMA_VERSION,
 } from "@cat-cave/qdcli-core";
 import { output, required, stringOpt } from "./args.js";
 import { EDGE_TYPES, importAdapter, isEdgeType, strictOptionalEnum } from "./enums.js";
@@ -52,6 +53,7 @@ export async function importCommand(
     : (JSON.parse(await readFile(filePath, "utf8")) as unknown);
   const canonicalSnapshot = adapter ? undefined : canonicalSnapshotFrom(source);
   if (canonicalSnapshot && !mappingPath) {
+    validateGraphSnapshotForWrite(canonicalSnapshot);
     const report = {
       ok: true,
       dryRun,
@@ -128,19 +130,34 @@ export async function syncCommand(
   validateGraphSnapshotForWrite(snapshot);
   const live = await graphSnapshot(root);
   const diff = snapshotDiff(live, snapshot);
+  const summary = syncDiffSummary(diff);
+  const report = {
+    path: path.relative(root, filePath),
+    nodes: snapshot.nodes.length,
+    edges: snapshot.edges.length,
+    findings: snapshot.findings.length,
+    runs: snapshot.runs.length,
+    nodeNotes: snapshot.node_notes.length,
+    summary,
+    diff,
+  };
+  await maybeWriteSyncDiff(root, options, report);
+  if (options["expect-clean"] && !diff.ok) {
+    throw new Error(
+      `qd sync --expect-clean found drift: ${summary}. Run qd sync --from ${path.relative(
+        root,
+        filePath,
+      )} --dry-run --json to inspect it.`,
+    );
+  }
   if (options["dry-run"]) {
     output(
       {
         ok: true,
         dryRun: true,
-        path: path.relative(root, filePath),
         wouldReplace: !diff.ok,
-        diff,
-        nodes: snapshot.nodes.length,
-        edges: snapshot.edges.length,
-        findings: snapshot.findings.length,
-        runs: snapshot.runs.length,
-        nodeNotes: snapshot.node_notes.length,
+        action: diff.ok ? "none" : "replace-local-cache",
+        ...report,
       },
       json,
     );
@@ -150,17 +167,33 @@ export async function syncCommand(
   return output(
     {
       ok: true,
-      path: path.relative(root, filePath),
       replaced: !diff.ok,
-      diff,
-      nodes: snapshot.nodes.length,
-      edges: snapshot.edges.length,
-      findings: snapshot.findings.length,
-      runs: snapshot.runs.length,
-      nodeNotes: snapshot.node_notes.length,
+      action: diff.ok ? "none" : "replaced-local-cache",
+      ...report,
     },
     json,
   );
+}
+
+export function syncDiffSummary(diff: ReturnType<typeof snapshotDiff>): string {
+  const parts = [
+    diff.liveOnlyNodes.length ? `${diff.liveOnlyNodes.length} live-only node(s)` : null,
+    diff.exportOnlyNodes.length ? `${diff.exportOnlyNodes.length} export-only node(s)` : null,
+    diff.changedNodes.length ? `${diff.changedNodes.length} changed node(s)` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "no drift";
+}
+
+async function maybeWriteSyncDiff(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+  report: Record<string, unknown>,
+): Promise<void> {
+  const target = stringOpt(options["write-diff"]);
+  if (!target) return;
+  const resolved = path.resolve(root, target);
+  await mkdir(path.dirname(resolved), { recursive: true });
+  await writeFile(resolved, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 }
 
 export function buildImportReport(
@@ -347,7 +380,7 @@ export function snapshotFromImportPlan(
     qdNodeFromInput(node.input, node.input.id ?? node.sourceId, now),
   );
   return deterministicGraphSnapshot({
-    schema_version: 1,
+    schema_version: QD_EXPORT_SCHEMA_VERSION,
     exported_at: now,
     registries: registriesFromNodes(nodesForSnapshot, now),
     nodes: nodesForSnapshot,

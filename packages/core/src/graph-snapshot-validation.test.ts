@@ -82,7 +82,7 @@ describe("graph snapshot validation", () => {
       await expect(
         restoreGraphSnapshot(restoredRoot, {
           ...snapshot,
-          schema_version: 2,
+          schema_version: 999,
         }),
       ).rejects.toThrow(/Unsupported qd export/);
       await expect(

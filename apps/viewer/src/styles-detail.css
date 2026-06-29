@@ -1,0 +1,143 @@
+.detailPanel {
+  color: #172026;
+}
+
+.detailHead {
+  align-items: flex-start;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  justify-content: start;
+}
+
+.detailHead h2 {
+  line-height: 1.25;
+}
+
+.detailHead p {
+  color: #65747c;
+  grid-column: 2;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 5px 10px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  margin: 0 0 14px;
+}
+
+.detailGrid dt {
+  color: #65747c;
+}
+
+.detailGrid dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.criticalNote {
+  background: #f0eafc;
+  border: 1px solid #d5c6f2;
+  border-radius: 7px;
+  color: #5c4295;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+}
+
+.blockerNote {
+  background: #fff4e4;
+  border: 1px solid #edcf9e;
+  border-radius: 7px;
+  color: #745018;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+}
+
+.detailSection {
+  border-top: 1px solid #e3e9ec;
+  padding: 12px 0;
+}
+
+.detailSection h3 {
+  font-size: 0.86rem;
+  margin: 0 0 6px;
+}
+
+.detailSection p,
+.detailSection ul {
+  color: #3d4e57;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.detailSection ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.dependencyList {
+  display: grid;
+  gap: 6px;
+}
+
+.dependencyItem {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px solid #d7e0e4;
+  border-radius: 7px;
+  color: #172026;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  min-height: 34px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.dependencyItem:hover {
+  border-color: #317f9d;
+}
+
+.dependencyItem strong,
+.dependencyItem small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependencyItem small {
+  color: #65747c;
+}
+
+.statusDot {
+  background: #9aa8af;
+  border-radius: 999px;
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
+
+.statusDot.ready,
+.statusDot.mergeable {
+  background: #2c8558;
+}
+
+.statusDot.done {
+  background: #6f7d84;
+}
+
+.statusDot.blocked,
+.statusDot.regressed {
+  background: #c46c26;
+}
+
+.statusDot.review,
+.statusDot.working,
+.statusDot.claimed,
+.statusDot.fixing,
+.statusDot.ci {
+  background: #7659b6;
+}

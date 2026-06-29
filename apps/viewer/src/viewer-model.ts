@@ -1,7 +1,14 @@
-import type { GraphSnapshot, NodeStatus, QdEdge, QdFinding, QdNode } from "@cat-cave/qdcli-core";
+import {
+  QD_EXPORT_SCHEMA_VERSION,
+  type GraphSnapshot,
+  type NodeStatus,
+  type QdEdge,
+  type QdFinding,
+  type QdNode,
+} from "@cat-cave/qdcli-core";
 
 export const emptySnapshot: GraphSnapshot = {
-  schema_version: 1,
+  schema_version: QD_EXPORT_SCHEMA_VERSION,
   exported_at: new Date(0).toISOString(),
   registries: { groups: [], projects: [], milestones: [] },
   nodes: [],
@@ -34,6 +41,7 @@ export const nodeHeight = 92;
 export const columnGap = 120;
 export const rowGap = 34;
 export const graphPadding = 80;
+export const layoutModes = ["dependencies", "milestones", "status"] as const;
 
 const priorityRank = new Map([
   ["P0", 0],
@@ -42,12 +50,15 @@ const priorityRank = new Map([
   ["P3", 3],
 ]);
 
+export type LayoutMode = (typeof layoutModes)[number];
+
 export interface Filters {
   query: string;
   statuses: Set<NodeStatus>;
   milestone: string;
   group: string;
   project: string;
+  layoutMode: LayoutMode;
   dimFiltered: boolean;
   focusSelection: boolean;
 }
@@ -79,25 +90,14 @@ export interface DragState {
   viewport: Viewport;
 }
 
-export function buildLayout(snapshot: GraphSnapshot, renderedNodeIds: Set<string>): LayoutGraph {
+export function buildLayout(
+  snapshot: GraphSnapshot,
+  renderedNodeIds: Set<string>,
+  mode: LayoutMode = "dependencies",
+): LayoutGraph {
   const nodes = snapshot.nodes.filter((node) => renderedNodeIds.has(node.id));
   const ids = new Set(nodes.map((node) => node.id));
-  const requires = snapshot.edges.filter(
-    (edge) => edge.type === "requires" && ids.has(edge.from_node) && ids.has(edge.to_node),
-  );
-  const layer = new Map(nodes.map((node) => [node.id, 0]));
-  for (let pass = 0; pass < nodes.length; pass += 1) {
-    let changed = false;
-    for (const edge of requires) {
-      const from = layer.get(edge.from_node) ?? 0;
-      const to = layer.get(edge.to_node) ?? 0;
-      if (to <= from) {
-        layer.set(edge.to_node, from + 1);
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
+  const layer = layoutLayers(snapshot, nodes, ids, mode);
   const byLayer = new Map<number, QdNode[]>();
   for (const node of nodes) {
     const nodeLayer = layer.get(node.id) ?? 0;
@@ -132,6 +132,57 @@ export function buildLayout(snapshot: GraphSnapshot, renderedNodeIds: Set<string
   };
 }
 
+export function layoutLayers(
+  snapshot: GraphSnapshot,
+  nodes: QdNode[],
+  ids: Set<string>,
+  mode: LayoutMode,
+): Map<string, number> {
+  if (mode === "milestones") return milestoneLayers(snapshot, nodes);
+  if (mode === "status") return statusLayers(nodes);
+  return dependencyLayers(snapshot, nodes, ids);
+}
+
+function dependencyLayers(
+  snapshot: GraphSnapshot,
+  nodes: QdNode[],
+  ids: Set<string>,
+): Map<string, number> {
+  const requires = snapshot.edges.filter(
+    (edge) => edge.type === "requires" && ids.has(edge.from_node) && ids.has(edge.to_node),
+  );
+  const layer = new Map(nodes.map((node) => [node.id, 0]));
+  for (let pass = 0; pass < nodes.length; pass += 1) {
+    let changed = false;
+    for (const edge of requires) {
+      const from = layer.get(edge.from_node) ?? 0;
+      const to = layer.get(edge.to_node) ?? 0;
+      if (to <= from) {
+        layer.set(edge.to_node, from + 1);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return layer;
+}
+
+function milestoneLayers(snapshot: GraphSnapshot, nodes: QdNode[]): Map<string, number> {
+  const ranked = [...snapshot.registries.milestones].sort(
+    (a, b) => (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER),
+  );
+  const byMilestone = new Map(ranked.map((entry, index) => [entry.name, index]));
+  const unassigned = byMilestone.size;
+  return new Map(
+    nodes.map((node) => [node.id, byMilestone.get(node.milestone ?? "") ?? unassigned]),
+  );
+}
+
+function statusLayers(nodes: QdNode[]): Map<string, number> {
+  const byStatus = new Map(statuses.map((status, index) => [status, index]));
+  return new Map(nodes.map((node) => [node.id, byStatus.get(node.status) ?? statuses.length]));
+}
+
 export function readyNodes(snapshot: GraphSnapshot): QdNode[] {
   return snapshot.nodes.filter((node) => {
     if (!["ready", "regressed"].includes(node.status)) return false;
@@ -162,6 +213,15 @@ export function fitBounds(bounds: Viewport): Viewport {
     width: Math.max(bounds.width + graphPadding * 2, 600),
     height: Math.max(bounds.height + graphPadding * 2, 420),
   };
+}
+
+export function boundsForLayoutNodes(nodes: LayoutNode[]): Viewport | null {
+  if (nodes.length === 0) return null;
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxX = Math.max(...nodes.map((node) => node.x + nodeWidth));
+  const maxY = Math.max(...nodes.map((node) => node.y + nodeHeight));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 export function zoomViewport(

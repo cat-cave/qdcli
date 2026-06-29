@@ -27,6 +27,7 @@ Global:
 
 Core:
   qd init
+  qd migrate
   qd setup [--no-hooks] [--print-agent-url]
   qd doctor [--strict] [--json]
   qd status [--json]
@@ -45,7 +46,7 @@ Core:
   qd export [--out roadmap/spec-dag.json] [--deterministic]
   qd export --status ready,claimed,review --milestone alpha [--json]
   qd import --from roadmap/spec-dag.json [--schema-mapping qd-import-map.json] [--dry-run] [--verbose] [--merge]
-  qd sync --from roadmap/spec-dag.json [--dry-run]
+  qd sync --from roadmap/spec-dag.json [--dry-run] [--expect-clean] [--write-diff sync-diff.json]
   qd import --from docs/ROADMAP.html --adapter roadmap-html [--dry-run]
   qd import --from roadmap.md --adapter markdown-checklist [--dry-run]
   qd workspace status|ready|graph [--json] [--config ~/.config/qd/workspaces.toml] [--repo <path>]
@@ -100,6 +101,12 @@ export function commandHelp(group: string, action?: string): string {
   const entries: Record<string, string> = {
     complete:
       "qd complete <node> --summary <text>\nRecords implementation completion and moves the node to review.",
+    init: "qd init [--json]\nInitializes .qd, config, logs, and applies current DB migrations.",
+    migrate:
+      "qd migrate [--json]\nApplies pending qd DB schema migrations in place. Run this after upgrading qd when doctor reports stale schema.",
+    import:
+      "qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults] [--merge]\nImports non-qd DAGs or qd canonical exports with strict dry-run validation.",
+    sync: "qd sync --from <qd-export.json> [--dry-run] [--expect-clean] [--write-diff <json>]\nValidates and optionally replaces the local qd cache from committed qd JSON.",
     advance:
       "qd advance <node> --summary <text> [--merge --use-existing-commit <sha>] [--skip-check] [--skip-ci]\nRuns completion, gate, check, CI, and optionally records merge state after a real merge commit is supplied.",
     check:
