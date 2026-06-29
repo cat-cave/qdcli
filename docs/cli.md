@@ -11,6 +11,7 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 
 - `qd init`
 - `qd setup`
+- `qd method show|status|acknowledge [--agent <name>]`
 - `qd migrate`
 - `qd doctor [--strict] [--json]`
 - `qd status [--json]`
@@ -36,6 +37,9 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd config set check-command <command>`
 - `qd config set ci-command <command>`
 - `qd prompt plan|research|implement|audit|resolve|reality-check|repo-audit|dag-review [node] [--json]`
+- `qd template completion-report|audit-report|blocker-report|unblock-report|research-report|reality-check|spec|milestone|finding`
+- `qd schema print <name>`
+- `qd schema example <name>`
 - `qd workspace status|ready|graph [--json] [--config <toml>] [--repo <path>]`
 - `qd advance <node> --from-report <completion-report.json> [--merge --use-existing-commit <sha>]`
 - `qd diff <node> [--base main] [--self-only] [--working] [--tool git|sem|inspect] [--format markdown|json|plain]`
@@ -48,6 +52,34 @@ qd config get ci-command
 ```
 
 For agent-facing JSON output, see [JSON Contract](./json.md).
+
+## Method and Templates
+
+qd mutating commands require the active orchestrator to acknowledge the current
+method hash first:
+
+```sh
+qd method show
+qd method acknowledge --agent codex
+qd method status --json
+```
+
+This writes `.qd/method-acknowledgement.json`. After a qd upgrade changes the
+method hash, mutation commands fail until the orchestrator rereads and
+acknowledges the method again.
+
+Use templates when authoring structured qd reports:
+
+```sh
+qd template completion-report > /tmp/completion-report.json
+qd template audit-report > /tmp/audit-report.json
+qd schema example blocker-report
+qd schema print completion-report
+```
+
+Templates are valid starting points, not evidence. The orchestrator must edit
+node ids, evidence paths, command logs, real-world validation, and findings to
+match the actual work before recording state.
 
 ## Migration
 

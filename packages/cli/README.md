@@ -22,4 +22,14 @@ qd --version
 
 Install the package and use the `qd` executable to create a repo-local DAG, claim ready nodes, record audits and findings, gate P0/P1 blockers, track CI/merge state, serve the installed viewer, and inspect the graph.
 
+First project setup should acknowledge qd's strict method before mutating roadmap state:
+
+```sh
+qd setup --no-hooks
+qd method show
+qd method acknowledge --agent codex
+qd template completion-report
+qd template audit-report
+```
+
 See https://github.com/cat-cave/qdcli for full documentation.

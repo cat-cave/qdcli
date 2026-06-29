@@ -96,8 +96,11 @@ import {
   runCommand,
   schemaCommand,
   stateCommand,
+  templateCommand,
 } from "./runtime-commands.js";
 import { isCliEntrypoint } from "./entrypoint.js";
+import { methodCommand, requireMethodAcknowledged } from "./method.js";
+import { requiresMethodAcknowledgement } from "./command-gates.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
@@ -129,6 +132,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     root: stringOpt(args.options.root),
     allowMissing: group === "init" || group === "setup",
   });
+
+  if (group === "method") return methodCommand(root, action, args.options, json);
+  if (requiresMethodAcknowledgement(group, action, args.options)) {
+    await requireMethodAcknowledged(root, [group, action].filter(Boolean).join(" "));
+  }
 
   switch (group) {
     case "init":
@@ -193,7 +201,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case "env":
       return envCommand(action, args.options, json);
     case "schema":
-      return schemaCommand(action, extra, json);
+      return schemaCommand(action, extra, args.options, json);
+    case "template":
+      return templateCommand(action, json);
     case "block":
       return blockCommand(root, action, args.options, json);
     case "unblock":

@@ -29,6 +29,7 @@ Core:
   qd init
   qd migrate
   qd setup [--no-hooks] [--print-agent-url]
+  qd method show|status|acknowledge [--agent <name>]
   qd doctor [--strict] [--json]
   qd status [--json]
   qd stats [--json] [--window 7] [--milestone <name>]
@@ -40,6 +41,9 @@ Core:
   qd eta [--window 7] [--milestone <name>]
   qd help method|reality|specs|milestones|audits|blockers|evidence
   qd prompt plan|research|implement|audit|resolve|reality-check|repo-audit|dag-review [node] [--include-project-rules <path>] [--base main] [--diff-tool git|sem|inspect] [--json]
+  qd template completion-report|audit-report|blocker-report|research-report|reality-check
+  qd schema print <name>
+  qd schema example <name>
   qd config show
   qd config get ci-command
   qd config set check-command "<fast project check command>"
@@ -101,6 +105,12 @@ export function commandHelp(group: string, action?: string): string {
   const entries: Record<string, string> = {
     complete:
       "qd complete <node> --from-report <completion-report.json>\nRecords evidence-backed implementation completion. Completion means ready for audit, not done.",
+    method:
+      "qd method show|status|acknowledge [--agent <name>] [--json]\nShows qd's strict method, records local acknowledgement, and gates mutation commands until the active method hash is acknowledged.",
+    template:
+      "qd template <completion-report|audit-report|blocker-report|unblock-report|research-report|reality-check|spec|milestone|finding>\nPrints a valid JSON starting point for agent-authored qd contracts.",
+    schema:
+      "qd schema list|print|example <name>\nPrints strict JSON schemas or copyable examples for qd contracts.",
     init: "qd init [--json]\nInitializes .qd, config, logs, and applies current DB migrations.",
     migrate:
       "qd migrate [--json]\nApplies pending qd DB schema migrations in place. Run this after upgrading qd when doctor reports stale schema.",

@@ -54,6 +54,7 @@ describe("qd CLI viewer and public lifecycle surfaces", () => {
 
   it("serves embedded viewer assets and live DAG endpoints through the viewer handler", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -159,6 +160,7 @@ describe("qd CLI viewer and public lifecycle surfaces", () => {
 
   it("runs a clean implementation-to-merge lifecycle through public commands", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd("config", "set", "require_clean_worktree", "false");
     await qd(
       "node",

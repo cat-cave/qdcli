@@ -4,6 +4,17 @@ Use qdcli when project work is too large for one agent pass and too risky to coo
 
 Read the repository's qd orchestration method before creating or advancing work. qd's method is not optional: research precedes roadmap, specs are executable contracts, completion requires evidence, audits review evidence, environment/provider/credential failures are blockers, and main stays green.
 
+At setup and after every qd upgrade, run:
+
+```sh
+qd method show
+qd method acknowledge --agent <orchestrator-name>
+qd method status --json
+```
+
+Do not work around an acknowledgement failure. It means the active orchestrator
+has not acknowledged the current qd method hash.
+
 ## Reality Contract
 
 - Do not invent APIs, URLs, schemas, credentials, command output, CI status, files, or evidence.
@@ -23,6 +34,14 @@ qd config set check-command "<fast project check command>"
 qd config set ci-command "<full trusted merge gate>"
 qd config set merge-strategy "squash"
 qd config get ci-command
+```
+
+Use qd templates instead of inventing report JSON:
+
+```sh
+qd template completion-report > /tmp/completion-report.json
+qd template audit-report > /tmp/audit-report.json
+qd template blocker-report > /tmp/blocker-report.json
 ```
 
 `check_command` is a fast preflight. `ci_command` is the full trusted gate; weak CI commands make qd state dishonest. Provider polling is adapter-based. GitHub through `gh` is one adapter, not qd's worldview.

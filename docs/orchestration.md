@@ -322,25 +322,21 @@ Reality-check findings enter the DAG like any other findings.
 
 ## Notifications
 
-When a blocker requires owner or external action, qd may notify a configured
-adapter. Notification is not part of correctness; the structured blocker is.
+When a blocker requires owner or external action, a future qd notifier may send
+the structured blocker to a configured adapter. Notification is not part of
+correctness; the structured blocker is.
 
-The first notifier should be small and adapter-based, such as ntfy:
-
-```text
-qd notify configure ntfy --topic qd-blockers --server https://ntfy.sh
-qd block <node> --type credential --reason "..." --owner trevor --needed "..." --notify ntfy
-```
+The first notifier should be small and adapter-based, such as ntfy.
 
 Future adapters can include generic webhooks, Slack, Discord, email, or issue
 comments. Unsupported notification targets should fail loudly.
 
 ## Method Acknowledgment
 
-Agents forget or skip instructions. qd should force rereads of the method before
-important mutations. The method has a version/hash. Mutating lifecycle commands
-should refuse when the active orchestrator has not acknowledged the current
-method, or when the configured reread cadence is due.
+Agents forget or skip instructions. qd forces rereads of the method before
+important mutations. The method has a version/hash. Mutating roadmap and
+evidence commands refuse when the active orchestrator has not acknowledged the
+current method.
 
 Acknowledgment is not a promise that the agent is correct. It is a friction
 point that makes the agent reload the operating doctrine before recording

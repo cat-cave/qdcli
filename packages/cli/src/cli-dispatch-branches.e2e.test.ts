@@ -17,6 +17,7 @@ describe("qd CLI dispatcher branches", () => {
     expect(await qd("node", "--help")).toContain("qd node");
 
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd("config", "set", "check_command", 'node -e "process.exit(0)"');
     await qd("config", "set", "ci_command", 'node -e "process.exit(0)"');
     await qd("config", "set", "require_clean_worktree", "false");

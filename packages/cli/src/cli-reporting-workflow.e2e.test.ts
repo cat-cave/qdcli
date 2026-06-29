@@ -22,6 +22,7 @@ describe("qd CLI reporting workflow surfaces", () => {
     expect(`${viewCheck.stdout}\n${viewCheck.stderr}`).toMatch(/ok|viewer|assets/i);
 
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await configureStrictDoctorCommands();
     await qd("group", "register", "--name", "runtime");
     await qd("project", "register", "--name", "app");

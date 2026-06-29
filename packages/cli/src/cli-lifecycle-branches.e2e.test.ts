@@ -68,6 +68,7 @@ async function writeCompletionReport(id: string): Promise<string> {
 describe("qd CLI lifecycle branch behavior", () => {
   it("records and runs verification with explicit failure behavior", async () => {
     await qd("init");
+    await qd("method", "acknowledge", "--agent", "test");
     await addLifecycleNode("verify-record");
     const reportPath = path.join(root, "verification.json");
     await writeFile(
@@ -135,6 +136,7 @@ describe("qd CLI lifecycle branch behavior", () => {
 
   it("stops advance at gate, check, policy, CI, and merge evidence boundaries", async () => {
     await qd("init");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd("config", "set", "require_clean_worktree", "false");
 
     await addLifecycleNode("empty-ci");

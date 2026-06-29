@@ -16,6 +16,7 @@ Before creating or advancing work, read the qd method:
 ```sh
 qd help method
 qd help reality
+qd method show
 ```
 
 If this repository includes the qdcli docs, also read `docs/orchestration.md`.
@@ -45,9 +46,15 @@ Run from the repository that will use qd:
 ```sh
 qd setup
 qd agent install skills-sh
+qd method show
+qd method acknowledge --agent <orchestrator-name>
 ```
 
 qd stores its working cache in `.qd/qd.db`, but that binary DB is local state. The portable source of truth is a committed JSON export.
+
+Mutation commands that create roadmap state or record evidence refuse to run
+until the current method hash is acknowledged. After upgrading qd, reread
+`qd method show` and run `qd method acknowledge` again.
 
 For a new qd DAG, start empty and export when state should be shared:
 

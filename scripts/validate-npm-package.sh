@@ -22,6 +22,7 @@ project="$tmpdir/project"
 mkdir -p "$project"
 cd "$project"
 "$qd" setup --no-hooks --json
+"$qd" method acknowledge --agent npm-smoke --json
 "$qd" config set ci-command --value "true" --json
 "$qd" doctor --json
 

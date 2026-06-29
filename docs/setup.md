@@ -88,6 +88,8 @@ The installed skill should teach the orchestrator to:
 
 ```sh
 qd setup --no-hooks
+qd method show
+qd method acknowledge --agent <orchestrator-name>
 ```
 
 `--no-hooks` is accepted for repos that want explicit hook opt-out. qd currently does not install git hooks by default; hooks remain a project-level choice.
@@ -98,6 +100,12 @@ This creates:
 - `.qd/config.toml`
 - `.qd/agents.md`
 - `.qd/skills/qd-dag/SKILL.md`
+
+`qd method acknowledge` writes `.qd/method-acknowledgement.json`. qd uses that
+local file to prove the active orchestrator has read the current method hash.
+Mutation commands that create roadmap state or record evidence refuse to run
+until the current method is acknowledged. After upgrading qd, rerun
+`qd method show` and `qd method acknowledge`.
 
 Treat `.qd/qd.db` as a local cache. Do not commit it. For shared state across machines, worktrees, or remote orchestrator hosts, commit a qd JSON export:
 

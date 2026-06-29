@@ -48,6 +48,7 @@ describe("qd CLI config and lifecycle surfaces", () => {
     expect((await qdJson("init", "--json")).ok).toBe(true);
     expect(await qd("setup", "--print-agent-url")).toContain("docs/llms.md");
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await expectQdFailure(/Unknown command/, "unknown-command");
     await qd("config", "set", "check_command", 'node -e "process.exit(0)"');
     await qd("config", "set", "ci_command", 'node -e "process.exit(0)"');

@@ -30,6 +30,7 @@ import {
   verificationSchema,
   waveSchema,
 } from "./schemas.js";
+import { reportTemplate, templateNames } from "./report-templates.js";
 import { isDiffTool } from "./diff.js";
 import { doctorCommand } from "./project-commands.js";
 
@@ -135,6 +136,7 @@ export async function envCommand(
 export function schemaCommand(
   action: string | undefined,
   name: string | undefined,
+  options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): void {
   const schemas = {
@@ -172,12 +174,19 @@ export function schemaCommand(
     wave: waveSchema(),
   };
   if (action === "list" || !action) return output(Object.keys(schemas), json);
+  if (action === "example") return output(reportTemplate(requiredArg(name, "schema name")), true);
+  if (options.example) return output(reportTemplate(requiredArg(action, "schema name")), true);
   if (action === "print") {
     const schema = schemas[requiredArg(name, "schema name") as keyof typeof schemas];
     if (!schema) throw new Error(`Unknown schema: ${name}`);
     return output(schema, true);
   }
   throw new Error(`Unknown schema action: ${action}`);
+}
+
+export function templateCommand(action: string | undefined, json: boolean): void {
+  if (action === "list" || !action) return output(templateNames(), json);
+  return output(reportTemplate(action), true);
 }
 
 export async function readinessCommand(

@@ -22,6 +22,7 @@ installCliFixture();
 describe("qd CLI import, workspace, and diff surfaces", () => {
   it("exercises import adapters, workspace rollups, env checks, and git diff helpers", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await configureStrictDoctorCommands();
 
     await writeFile(
@@ -222,6 +223,7 @@ describe("qd CLI import, workspace, and diff surfaces", () => {
     const importedRoot = await mkdtemp(path.join(os.tmpdir(), "qdcli-e2e-imported-"));
     try {
       await qdAt(importedRoot, "setup", "--no-hooks");
+      await qdAt(importedRoot, "method", "acknowledge", "--agent", "test");
       await qdAt(importedRoot, "import", "--from", path.join(root, "roadmap/spec-dag.json"));
       await writeFile(
         path.join(root, "workspace.toml"),

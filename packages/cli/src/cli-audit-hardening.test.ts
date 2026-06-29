@@ -59,6 +59,7 @@ function auditFinding(
 describe("qd CLI audit command hardening", () => {
   it("exercises finding add, list, dispose, resolve, and promote branches", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -227,6 +228,7 @@ describe("qd CLI audit command hardening", () => {
 
   it("exercises audit start, validate, list, pass, fail, and terminal statuses", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",

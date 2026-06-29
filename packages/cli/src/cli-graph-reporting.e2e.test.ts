@@ -34,6 +34,7 @@ async function writeCompletionReport(id: string): Promise<string> {
 describe("qd CLI graph reporting surfaces", () => {
   it("applies graph command selectors and validates command-specific branches", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd("group", "register", "--name", "runtime");
     await qd("project", "register", "--name", "viewer");
     await qd("milestone", "register", "--name", "m1", "--rank", "10");

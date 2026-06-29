@@ -15,6 +15,7 @@ installCliFixture();
 describe("qd CLI orchestration reporting surfaces", () => {
   it("exercises assignment, audit, verification, prompt, and export commands", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await configureStrictDoctorCommands();
     await qd("group", "register", "--name", "runtime");
     await qd("project", "register", "--name", "app");

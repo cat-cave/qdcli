@@ -13,8 +13,92 @@ import {
 installCliFixture();
 
 describe("qd strict orchestration method", () => {
+  it("requires method acknowledgement before mutating roadmap state", async () => {
+    await qd("setup", "--no-hooks");
+
+    await expectQdFailure(
+      /method has not been acknowledged|qd method acknowledge/i,
+      "node",
+      "add",
+      "--id",
+      "blocked-without-method",
+      "--title",
+      "Blocked without method acknowledgement",
+      "--spec",
+      "This should not be created until the method is acknowledged.",
+      "--acceptance",
+      "The method gate prevents accidental weak orchestration.",
+    );
+
+    const method = await qdJson("method", "show", "--json");
+    expect(method).toMatchObject({
+      version: expect.any(String),
+      hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(String(method.text)).toMatch(/Research precedes roadmap|Completion requires/i);
+
+    const acknowledged = await qdJson(
+      "method",
+      "acknowledge",
+      "--agent",
+      "test-orchestrator",
+      "--json",
+    );
+    expect(acknowledged).toMatchObject({
+      ok: true,
+      acknowledgement: {
+        version: method.version,
+        hash: method.hash,
+        agent: "test-orchestrator",
+      },
+    });
+    expect(await qdJson("method", "status", "--json")).toMatchObject({ ok: true });
+
+    expect(
+      await qdJson(
+        "node",
+        "add",
+        "--id",
+        "acknowledged-node",
+        "--title",
+        "Acknowledged node",
+        "--spec",
+        "The method was acknowledged before mutation.",
+        "--acceptance",
+        "The node exists only after method acknowledgement.",
+        "--json",
+      ),
+    ).toMatchObject({ id: "acknowledged-node" });
+  });
+
+  it("prints copyable strict report templates and schema examples", async () => {
+    await qd("setup", "--no-hooks");
+    const completion = await qdJson("template", "completion-report");
+    expect(completion).toMatchObject({
+      nodeId: "node-id",
+      acceptanceEvidence: expect.any(Array),
+      commandsRun: expect.any(Array),
+      realWorldValidation: { required: true, status: "passed" },
+      unverifiedItems: [],
+    });
+    const audit = await qdJson("schema", "example", "audit-report");
+    expect(audit).toMatchObject({
+      nodeId: "node-id",
+      verificationEvidence: {
+        diffReviewed: true,
+        completionReportReviewed: true,
+        verificationEvidenceReviewed: true,
+      },
+      findings: [],
+    });
+    expect(await qdJson("template", "list", "--json")).toEqual(
+      expect.arrayContaining(["completion-report", "audit-report", "blocker-report"]),
+    );
+  });
+
   it("refuses summary-only completion for implementation nodes", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -88,6 +172,7 @@ describe("qd strict orchestration method", () => {
 
   it("rejects clean audit reports that omit real-world validation evidence", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -129,6 +214,7 @@ describe("qd strict orchestration method", () => {
 
   it("supports structured blocker and unblock escape hatches without returning blocked work as ready", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -217,6 +303,7 @@ describe("qd strict orchestration method", () => {
 
   it("forces the reality contract into help and generated prompts", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -244,6 +331,7 @@ describe("qd strict orchestration method", () => {
 
   it("publishes strict method schemas for agent-authored contracts", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     const schemas = await qdJson("schema", "list", "--json");
     expect(schemas).toEqual(
       expect.arrayContaining([

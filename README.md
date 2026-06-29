@@ -46,6 +46,8 @@ The Nix shell provides Node 24, git, gh, just, and Corepack-managed pnpm. Projec
 ```sh
 qd setup
 qd agent install skills-sh
+qd method show
+qd method acknowledge --agent codex
 qd config set check-command "<fast project check command>"
 qd config set ci-command "<full project CI command>"
 qd config get ci-command
@@ -55,8 +57,13 @@ qd node add --id scaffold --title "Scaffold project" --spec "Create the project 
 qd ready
 qd claim scaffold --agent codex
 qd prompt implement scaffold
-qd complete scaffold --summary "Implemented the scaffold."
-printf '{"findings":[]}\n' > /tmp/qd-clean-audit.json
+qd template completion-report > /tmp/qd-completion.json
+# Edit /tmp/qd-completion.json so nodeId, acceptanceEvidence, commandsRun,
+# evidence, and realWorldValidation describe the actual scaffold work.
+qd complete scaffold --from-report /tmp/qd-completion.json
+qd template audit-report > /tmp/qd-clean-audit.json
+# Edit /tmp/qd-clean-audit.json so it independently reviews the diff,
+# completion evidence, acceptance criteria, and real-world validation.
 qd audit start scaffold
 qd audit pass scaffold --from-report /tmp/qd-clean-audit.json
 qd gate scaffold

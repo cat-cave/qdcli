@@ -15,6 +15,7 @@ installCliFixture();
 describe("qd CLI edit and sync surfaces", () => {
   it("routes structured blocker metadata through block and unblock commands", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
@@ -158,6 +159,7 @@ describe("qd CLI edit and sync surfaces", () => {
 
   it("dry-runs and applies canonical JSON sync without losing blocker metadata", async () => {
     await qd("setup", "--no-hooks");
+    await qd("method", "acknowledge", "--agent", "test");
     await qd(
       "node",
       "add",
