@@ -65,7 +65,7 @@ export function runShellCommand(
       cleanup();
       reject(error);
     });
-    child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
+    child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -132,7 +132,7 @@ export function captureShellCommand(
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", reject);
-    child.on("exit", (code: number | null) =>
+    child.on("close", (code: number | null) =>
       resolve({
         code: code ?? 1,
         stdout: Buffer.concat(stdout).toString("utf8"),
@@ -157,7 +157,7 @@ export function captureCommand(
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", reject);
-    child.on("exit", (code: number | null) =>
+    child.on("close", (code: number | null) =>
       resolve({
         code: code ?? 1,
         stdout: Buffer.concat(stdout).toString("utf8"),

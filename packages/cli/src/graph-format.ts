@@ -97,6 +97,7 @@ export function nextStepForNode(
   if (node.status === "blocked" && passedRecoveryRun) {
     return `qd unblock ${node.id} --from-run ${passedRecoveryRun.id} --summary "<why it is unblocked>"`;
   }
+  if (node.status === "queued") return `qd queue watch ${node.id}`;
   if (node.status !== "mergeable") return `qd ci run ${node.id}`;
   if (latestCi?.status !== "passed") return `qd ci run ${node.id}`;
   return null;

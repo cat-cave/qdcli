@@ -34,7 +34,7 @@ Node contract:
 - `title`: one-line imperative outcome
 - `kind`: `feature`, `fix`, `refactor`, `test`, `docs`, `infra`, `audit-fix`
 - `milestone`: optional grouping
-- `status`: `draft`, `ready`, `claimed`, `working`, `review`, `fixing`, `ci`, `mergeable`, `done`, `blocked`, `cancelled`
+- `status`: `draft`, `ready`, `claimed`, `working`, `review`, `fixing`, `ci`, `mergeable`, `queued`, `done`, `blocked`, `cancelled`
 - `priority`: `P0`, `P1`, `P2`, `P3`
 - `estimate_points`: small integer, preferably 1, 2, 3, 5, 8
 - `risk`: `low`, `medium`, `high`

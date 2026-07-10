@@ -88,7 +88,7 @@ export function strictVerificationArrayAt(
 
 export function canonicalSnapshotFrom(source: unknown): GraphSnapshot | undefined {
   if (!isRecord(source) || source.schema_version === undefined) return undefined;
-  if (!SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS.includes(source.schema_version as 1 | 2)) {
+  if (!SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS.includes(source.schema_version as 1 | 2 | 3)) {
     throw new Error(
       `Unsupported qd export schema_version: ${formatUnknown(source.schema_version)}`,
     );
@@ -127,6 +127,11 @@ function normalizeCanonicalNode(node: unknown, index: number): QdNode {
     branch: node.branch ?? null,
     pr_number: node.pr_number ?? null,
     pr_url: node.pr_url ?? null,
+    merge_queue_entry_id: node.merge_queue_entry_id ?? null,
+    merge_queue_enqueued_at: node.merge_queue_enqueued_at ?? null,
+    merge_group_sha: node.merge_group_sha ?? null,
+    merge_queue_ejected_at: node.merge_queue_ejected_at ?? null,
+    merge_queue_ejection_reason: node.merge_queue_ejection_reason ?? null,
     validation: node.validation ?? null,
     verification: node.verification ?? [],
     audit_focus: node.audit_focus ?? [],

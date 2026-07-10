@@ -61,7 +61,9 @@ export async function doctorCommand(
   if (config.ciProvider === "github") {
     if (!config.ciRepo.trim()) configErrors.push("ci_repo is required when ci_provider is github");
     if (!config.ciWorkflow.trim()) {
-      configErrors.push("ci_workflow is required when ci_provider is github");
+      configWarnings.push(
+        "ci_workflow is empty; legacy workflow polling is unavailable, but PR/queue checks use branch rules",
+      );
     }
     if (config.ciAuth !== "gh-cli") configErrors.push("ci_auth must be gh-cli");
   }
@@ -182,7 +184,15 @@ export async function readyCommand(
         pr: status.pr.number,
         checks: status.checkState,
         behind: status.behind,
+        drift: status.behindIgnoredByQueue
+          ? "queue-managed"
+          : status.behind > 0
+            ? "stale"
+            : "current",
         mergeability: status.pr.mergeStateStatus,
+        queue: status.queue.membership,
+        queuePosition: status.queue.position,
+        mergeGroupChecks: status.queue.checkState,
         url: status.pr.url,
       })),
       json,

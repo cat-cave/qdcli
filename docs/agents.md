@@ -32,10 +32,11 @@ qd config set ci-command "<full project CI command>"
 12. P2/P3 findings are promoted into future nodes after the current node passes.
 13. Declared verification is inspected with `qd verification list <node>` and signed off by exact index with `qd verification sign-off <node> --index <n> --note "..." --evidence <path>`.
 14. The orchestrator runs `qd check run <node>` when a fast preflight is useful.
-15. For linked GitHub PRs, the orchestrator uses `qd ci status|watch`, `qd monitor`, or `qd sync-prs`; required checks are observed rather than manually asserted.
-16. The orchestrator uses `qd ready --mergeable` to find green, audited, current PRs and `qd merge <node> --via-pr` to integrate them.
-17. For non-PR integrations, the orchestrator records `qd merge <node> --use-existing-commit <sha>` only after qd marks the node mergeable.
-18. Shared qd state is exported with `qd export --deterministic --out roadmap/spec-dag.json`; another clone restores the local cache with `qd sync --from roadmap/spec-dag.json`.
+15. For linked GitHub PRs, the orchestrator uses `qd ci status|watch`, `qd monitor`, or `qd sync-prs`; branch-rule-required checks are observed rather than manually asserted.
+16. The orchestrator uses `qd ready --mergeable` to select a bounded wave and `qd queue enqueue --all-ready --wave <wave-id> --limit <n> --concurrency <n>` to admit parallel PRs without serial polling.
+17. `qd queue drain` reconciles queue-produced commits. Ejected nodes return to `fixing`; `qd queue bisect <node>` supplies deterministic, point-balanced failure cohorts instead of guessing which concurrent PR caused a merge-group regression.
+18. For a single linked PR, `qd merge <node> --via-pr` either integrates directly or enqueues, depending on branch policy. For non-PR integrations, the orchestrator records `qd merge <node> --use-existing-commit <sha>` only after qd marks the node mergeable.
+19. Shared qd state is exported with `qd export --deterministic --out roadmap/spec-dag.json`; another clone restores the local cache with `qd sync --from roadmap/spec-dag.json`.
 
 After about 10 merged nodes, run a repo-wide audit and add every real finding to
 qd. After about 30 merged nodes, run a DAG reality review and revise milestones,

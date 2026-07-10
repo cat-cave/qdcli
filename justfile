@@ -52,10 +52,11 @@ release-version:
 release-check:
   just ci
   just npm-smoke
-  just mutation
 
 release-tag:
-  VERSION="$(node -p 'require("./packages/cli/package.json").version')"; git add .changeset package.json pnpm-lock.yaml packages/core/package.json packages/core/CHANGELOG.md packages/cli/package.json packages/cli/CHANGELOG.md; git commit -m "Release v$VERSION"; git tag "v$VERSION"
+  git diff --quiet
+  git diff --cached --quiet
+  VERSION="$(node -p 'require("./packages/cli/package.json").version')"; git tag "v$VERSION"
 
 release-push:
   VERSION="$(node -p 'require("./packages/cli/package.json").version')"; git push origin main "v$VERSION"

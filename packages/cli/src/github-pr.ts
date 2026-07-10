@@ -1,5 +1,6 @@
 import {
   getNode,
+  markMergeQueued,
   readConfig,
   setNodePullRequest,
   type QdConfig,
@@ -9,9 +10,7 @@ import { captureCommand, sleep } from "./shell.js";
 import {
   aggregateGitHubChecks,
   monitorGlyph,
-  parseGitHubPrChecks,
   parseGitHubPullRequest,
-  prChecksArgs,
   prCompareArgs,
   prMergeArgs,
   prUpdateBranchArgs,
@@ -20,6 +19,36 @@ import {
   type GitHubPrCheck,
   type GitHubPullRequest,
 } from "./github-pr-model.js";
+import {
+  enqueueGitHubPullRequest,
+  githubMergeQueueObservation,
+  type GitHubMergeQueueEntryState,
+  type GitHubMergeQueueObservation,
+} from "./github-merge-queue.js";
+import {
+  githubBranchPolicy,
+  githubRequiredChecksForCommit,
+  type GitHubBranchPolicy,
+} from "./github-rules.js";
+
+export type GitHubQueueMembership = "disabled" | "not-enqueued" | "queued" | "ejected" | "merged";
+
+export interface GitHubQueueStatus {
+  enabled: boolean;
+  membership: GitHubQueueMembership;
+  position: number | null;
+  entryId: string | null;
+  entryState: GitHubMergeQueueEntryState | null;
+  enqueuedAt: string | null;
+  estimatedTimeToMerge: number | null;
+  autoMergeEnabled: boolean;
+  mergeGroupSha: string | null;
+  checks: GitHubPrCheck[];
+  checkState: GitHubCheckState;
+  missingRequiredChecks: string[];
+  ejectionReason: string | null;
+  url: string;
+}
 
 export interface GitHubPrStatus {
   ok: boolean;
@@ -29,11 +58,15 @@ export interface GitHubPrStatus {
   pr: GitHubPullRequest;
   checks: GitHubPrCheck[];
   requiredChecksOnly: boolean;
+  branchPolicy: GitHubBranchPolicy;
   checkState: GitHubCheckState;
   glyph: string;
   behind: number;
+  behindIgnoredByQueue: boolean;
   mergeable: boolean;
+  readyToEnqueue: boolean;
   readyToMerge: boolean;
+  queue: GitHubQueueStatus;
   evidenceUrl: string;
 }
 
@@ -46,29 +79,99 @@ export async function githubPrStatus(
   const config = await readConfig(root);
   const repository = githubRepository(config, options.repo);
   const pr = await resolveNodePullRequest(root, node, repository, options.persist !== false);
-  const checkResult = await requiredOrAllChecks(root, pr.url, repository);
-  const checkState = aggregateGitHubChecks(checkResult.checks);
-  const behind = await pullRequestBehindCount(root, repository, pr);
+  const branchPolicy = await githubBranchPolicy(root, repository, pr.baseRefName);
+  const queueObservation =
+    config.mergeQueueMode === "off"
+      ? disabledQueueObservation()
+      : await githubMergeQueueObservation(root, repository, pr.number);
+  const queueEnabled =
+    config.mergeQueueMode !== "off" && (branchPolicy.mergeQueueEnabled || queueObservation.enabled);
+  const [checks, behind] = await Promise.all([
+    githubRequiredChecksForCommit(root, repository, pr.headRefOid, branchPolicy.requiredChecks),
+    pullRequestBehindCount(root, repository, pr),
+  ]);
+  const checkState = aggregateGitHubChecks(checks);
   const mergeable =
     pr.state === "OPEN" &&
     !pr.isDraft &&
     pr.mergeable === "MERGEABLE" &&
     !["CONFLICTING", "DIRTY", "DRAFT"].includes(pr.mergeStateStatus);
+  const queue = await mergeQueueStatus(
+    root,
+    node,
+    pr,
+    repository,
+    branchPolicy,
+    queueObservation,
+    queueEnabled,
+  );
+  const readyToEnqueue = checkState === "pass" && mergeable && queueEnabled;
   return {
-    ok: checkState === "pass",
+    ok: checkState === "pass" && queue.checkState !== "fail",
     nodeId: node.id,
     ledgerStatus: node.status,
     repository,
     pr,
-    checks: checkResult.checks,
-    requiredChecksOnly: checkResult.requiredOnly,
+    checks,
+    requiredChecksOnly: branchPolicy.source !== "none",
+    branchPolicy,
     checkState,
     glyph: monitorGlyph(checkState),
     behind,
+    behindIgnoredByQueue: queueEnabled && behind > 0,
     mergeable,
-    readyToMerge: checkState === "pass" && mergeable && behind === 0,
+    readyToEnqueue,
+    readyToMerge: checkState === "pass" && mergeable && (queueEnabled || behind === 0),
+    queue,
     evidenceUrl: `${pr.url}/checks`,
   };
+}
+
+export async function enqueueNodePullRequest(
+  root: string,
+  nodeOrId: QdNode | string,
+  options: { repo?: string; settleSeconds?: number } = {},
+): Promise<{ node: QdNode; status: GitHubPrStatus; observation: GitHubMergeQueueObservation }> {
+  const node = typeof nodeOrId === "string" ? await getNode(root, nodeOrId) : nodeOrId;
+  const status = await githubPrStatus(root, node, { repo: options.repo });
+  if (!status.queue.enabled) {
+    throw new Error(`GitHub merge queue is not enabled for ${status.pr.baseRefName}`);
+  }
+  if (status.queue.membership === "ejected") {
+    throw new Error(
+      `PR #${status.pr.number} was ejected from the merge queue: ${status.queue.ejectionReason ?? "unknown reason"}`,
+    );
+  }
+  if (status.pr.state === "MERGED") {
+    throw new Error(`PR #${status.pr.number} is already merged; run qd sync-prs to reconcile it`);
+  }
+  if (status.queue.membership === "queued" || status.queue.autoMergeEnabled) {
+    const updated = await markMergeQueued(root, node.id, queueObservationInput(status));
+    return {
+      node: updated,
+      status,
+      observation: queueObservationFromStatus(status.queue),
+    };
+  }
+  if (!status.readyToEnqueue) {
+    throw new Error(
+      `PR #${status.pr.number} is not ready to enqueue: checks=${status.checkState}, mergeability=${status.pr.mergeStateStatus}`,
+    );
+  }
+  const observation = await enqueueGitHubPullRequest(root, {
+    repository: status.repository,
+    pullRequestUrl: status.pr.url,
+    pullRequestNumber: status.pr.number,
+    headOid: status.pr.headRefOid,
+    settleSeconds: options.settleSeconds,
+  });
+  const updated = await markMergeQueued(root, node.id, {
+    entryId: observation.entry?.id ?? null,
+    enqueuedAt: observation.entry?.enqueuedAt ?? observation.autoMergeEnabledAt,
+    mergeGroupSha: observation.entry?.headCommitOid ?? null,
+    pullRequestUrl: status.pr.url,
+  });
+  return { node: updated, status, observation };
 }
 
 export async function linkNodePullRequest(
@@ -188,26 +291,6 @@ async function fetchPullRequest(
   return parseGitHubPullRequest(result.stdout);
 }
 
-async function requiredOrAllChecks(
-  root: string,
-  reference: string,
-  repository: string,
-): Promise<{ checks: GitHubPrCheck[]; requiredOnly: boolean }> {
-  const required = await captureCommand("gh", prChecksArgs(reference, repository, true), root);
-  const requiredChecks = parseChecksWhenAvailable(required.stdout);
-  if (requiredChecks.length > 0) return { checks: requiredChecks, requiredOnly: true };
-  const all = await captureCommand("gh", prChecksArgs(reference, repository, false), root);
-  if (![0, 8].includes(all.code) && !all.stdout.trim()) {
-    throw new Error(`gh pr checks failed: ${all.stderr}`);
-  }
-  return { checks: parseGitHubPrChecks(all.stdout), requiredOnly: false };
-}
-
-function parseChecksWhenAvailable(stdout: string): GitHubPrCheck[] {
-  if (!stdout.trim()) return [];
-  return parseGitHubPrChecks(stdout);
-}
-
 async function pullRequestBehindCount(
   root: string,
   repository: string,
@@ -232,4 +315,114 @@ function assertPullRequestMatchesBranch(node: QdNode, pr: GitHubPullRequest): vo
       `PR ${pr.url} head branch ${pr.headRefName} does not match node branch ${node.branch}`,
     );
   }
+}
+
+async function mergeQueueStatus(
+  root: string,
+  node: QdNode,
+  pr: GitHubPullRequest,
+  repository: string,
+  branchPolicy: GitHubBranchPolicy,
+  observation: GitHubMergeQueueObservation,
+  queueEnabled: boolean,
+): Promise<GitHubQueueStatus> {
+  const membership = queueMembership(node, pr, observation, queueEnabled);
+  const mergeGroupSha = observation.entry?.headCommitOid ?? node.merge_group_sha ?? null;
+  const checks = mergeGroupSha
+    ? await githubRequiredChecksForCommit(
+        root,
+        repository,
+        mergeGroupSha,
+        branchPolicy.requiredChecks,
+      )
+    : [];
+  const checkState = aggregateGitHubChecks(checks);
+  const missingRequiredChecks = checks
+    .filter((check) => check.source === "missing")
+    .map((check) => check.name);
+  const failingChecks = checks
+    .filter((check) => check.bucket === "fail" || check.bucket === "cancel")
+    .map((check) => check.name);
+  const ejectionReason =
+    membership === "ejected"
+      ? (node.merge_queue_ejection_reason ??
+        (failingChecks.length > 0
+          ? `merge-group checks failed: ${failingChecks.join(", ")}`
+          : missingRequiredChecks.length > 0
+            ? `required merge-group checks missing: ${missingRequiredChecks.join(", ")}`
+            : pr.state === "CLOSED"
+              ? "pull request closed before merge"
+              : "GitHub removed the pull request from the merge queue"))
+      : null;
+  return {
+    enabled: queueEnabled,
+    membership,
+    position: observation.entry?.position ?? null,
+    entryId: observation.entry?.id ?? node.merge_queue_entry_id ?? null,
+    entryState: observation.entry?.state ?? null,
+    enqueuedAt: observation.entry?.enqueuedAt ?? node.merge_queue_enqueued_at ?? null,
+    estimatedTimeToMerge: observation.entry?.estimatedTimeToMerge ?? null,
+    autoMergeEnabled: observation.autoMergeEnabled,
+    mergeGroupSha,
+    checks,
+    checkState,
+    missingRequiredChecks,
+    ejectionReason,
+    url: observation.entry?.queueUrl ?? "",
+  };
+}
+
+function queueMembership(
+  node: QdNode,
+  pr: GitHubPullRequest,
+  observation: GitHubMergeQueueObservation,
+  queueEnabled: boolean,
+): GitHubQueueMembership {
+  if (pr.state === "MERGED") return "merged";
+  if (!queueEnabled) return node.status === "queued" ? "ejected" : "disabled";
+  if (observation.inQueue || observation.entry) return "queued";
+  if (node.status === "queued" && !observation.autoMergeEnabled) return "ejected";
+  if (node.merge_queue_ejected_at && node.status === "fixing") return "ejected";
+  return "not-enqueued";
+}
+
+function disabledQueueObservation(): GitHubMergeQueueObservation {
+  return {
+    enabled: false,
+    inQueue: false,
+    autoMergeEnabled: false,
+    autoMergeEnabledAt: null,
+    entry: null,
+  };
+}
+
+function queueObservationInput(status: GitHubPrStatus) {
+  return {
+    entryId: status.queue.entryId,
+    enqueuedAt: status.queue.enqueuedAt,
+    mergeGroupSha: status.queue.mergeGroupSha,
+    pullRequestUrl: status.pr.url,
+  };
+}
+
+function queueObservationFromStatus(queue: GitHubQueueStatus): GitHubMergeQueueObservation {
+  return {
+    enabled: queue.enabled,
+    inQueue: queue.membership === "queued",
+    autoMergeEnabled: queue.autoMergeEnabled,
+    autoMergeEnabledAt: queue.enqueuedAt,
+    entry:
+      queue.entryId && queue.enqueuedAt
+        ? {
+            id: queue.entryId,
+            position: queue.position ?? 0,
+            state: queue.entryState ?? "UNKNOWN",
+            enqueuedAt: queue.enqueuedAt,
+            estimatedTimeToMerge: queue.estimatedTimeToMerge,
+            headCommitOid: queue.mergeGroupSha,
+            baseCommitOid: null,
+            queueUrl: queue.url,
+          }
+        : null,
+  };
 }

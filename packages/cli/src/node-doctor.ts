@@ -67,11 +67,41 @@ export async function nodeDoctorCommand(
   if (node.status !== "done" && config.ciProvider === "github" && (node.pr_url || node.branch)) {
     try {
       pullRequest = await githubPrStatus(root, node, { persist: false });
-      if (pullRequest.behind > 0) {
+      if (pullRequest.behind > 0 && !pullRequest.behindIgnoredByQueue) {
         reasons.set("staleBase", {
           code: "staleBase",
           message: `PR #${pullRequest.pr.number} is ${pullRequest.behind} commit(s) behind ${pullRequest.pr.baseRefName}.`,
           evidence: { behind: pullRequest.behind, pullRequest: pullRequest.pr },
+        });
+      }
+      if (pullRequest.queue.membership === "ejected") {
+        reasons.set("ejected-from-queue", {
+          code: "ejected-from-queue",
+          message:
+            pullRequest.queue.ejectionReason ??
+            `PR #${pullRequest.pr.number} was ejected from the merge queue.`,
+          evidence: { queue: pullRequest.queue },
+        });
+      }
+      if (pullRequest.queue.checkState === "fail") {
+        reasons.set("merge-group-check-failed", {
+          code: "merge-group-check-failed",
+          message: `Merge-group checks failed for PR #${pullRequest.pr.number}.`,
+          evidence: { queue: pullRequest.queue },
+        });
+      }
+      if (pullRequest.queue.missingRequiredChecks.length > 0) {
+        reasons.set("queue-required-check-missing", {
+          code: "queue-required-check-missing",
+          message: `Merge group is missing required checks: ${pullRequest.queue.missingRequiredChecks.join(", ")}.`,
+          evidence: { queue: pullRequest.queue },
+        });
+      }
+      if (node.status === "queued" && pullRequest.queue.membership !== "ejected") {
+        reasons.set("queued", {
+          code: "queued",
+          message: `PR #${pullRequest.pr.number} is waiting for GitHub's merge queue to complete.`,
+          evidence: { queue: pullRequest.queue },
         });
       }
     } catch (error) {
@@ -123,7 +153,9 @@ export function nodeDoctorReasons(
     reasons.set(explanation.code, explanation);
   }
   const relevantPolicy =
-    status === "mergeable" || status === "done" ? mergeViolations : ciViolations;
+    status === "mergeable" || status === "queued" || status === "done"
+      ? mergeViolations
+      : ciViolations;
   for (const violation of relevantPolicy) {
     reasons.set(violation.code, {
       code: violation.code,
@@ -131,7 +163,7 @@ export function nodeDoctorReasons(
       evidence: violation.evidence,
     });
   }
-  if (!["review", "mergeable", "done", "blocked", "cancelled"].includes(status)) {
+  if (!["review", "mergeable", "queued", "done", "blocked", "cancelled"].includes(status)) {
     reasons.set("completionRequired", {
       code: "completionRequired",
       message: `Node status ${status} has not recorded evidence-backed completion.`,
@@ -173,6 +205,11 @@ export function doctorNextActions(
     actions.push(`qd finding list --node ${nodeId} --open`);
   }
   if (codes.has("staleBase")) actions.push("qd sync-prs --rebase");
+  if (codes.has("queued")) actions.push(`qd queue watch ${nodeId}`);
+  if (codes.has("ejected-from-queue") || codes.has("merge-group-check-failed")) {
+    actions.push(`qd queue bisect ${nodeId}`);
+    actions.push(`qd complete ${nodeId} --from-report <completion-report.json>`);
+  }
   if (codes.has("blockingFinding")) actions.push(`qd finding list --node ${nodeId} --open`);
   if (codes.has("runningAudit")) {
     actions.push(`qd audit pass ${nodeId} --from-report <audit-report.json>`);

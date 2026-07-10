@@ -135,7 +135,7 @@ async function stopAdvance(
 }
 
 export function shouldCompleteForAdvance(status: string): boolean {
-  return !["review", "mergeable", "done"].includes(status);
+  return !["review", "mergeable", "queued", "done"].includes(status);
 }
 
 export function shouldRunConfiguredAdvanceStep(
@@ -168,6 +168,9 @@ export function advanceNextActions(status: string, mergeRequested: boolean): str
     return [
       "Perform the real git/GitHub merge, then run qd merge --use-existing-commit <sha> or qd reconcile --commit <sha> --from-report <reconciliation.json>.",
     ];
+  }
+  if (status === "queued") {
+    return ["Wait with qd queue watch <node> or reconcile all queued PRs with qd queue drain."];
   }
   return [];
 }

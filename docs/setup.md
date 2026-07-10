@@ -148,11 +148,12 @@ orchestration; if reality prevents progress, record a blocker or revise the DAG.
 If the repository uses a supported hosted CI adapter, configure it separately from local commands. The first built-in adapter is GitHub through the `gh` CLI:
 
 ```sh
-qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd config set ci-provider github --repo owner/name --auth gh-cli
+qd config set merge-queue-mode auto
 qd config get ci-provider
 ```
 
-Link GitHub PRs with `qd claim <node> --pr <number-or-url>` or `qd node set-pr`. Use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` for required-check aggregation and stale-base visibility; use `qd merge --via-pr` for protected integration. Provider polling is optional. If no adapter fits the project, keep using `qd ci run` for local trusted CI or `qd ci record-pass` with explicit evidence for externally completed CI.
+Link GitHub PRs with `qd claim <node> --pr <number-or-url>` or `qd node set-pr`. qd reads required contexts and merge-queue activation from the target branch's rules. Use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` for PR-head and merge-group visibility; use `qd merge --via-pr` for direct protected integration or asynchronous enqueue. Set `merge-queue-mode` to `required` when every PR must use the queue, or `off` when the repository intentionally has none. `ci_workflow` is only needed for legacy workflow polling. If no adapter fits the project, keep using `qd ci run` for local trusted CI or `qd ci record-pass` with explicit evidence for externally completed CI.
 
 If the repository uses git worktrees, configure the convention once:
 

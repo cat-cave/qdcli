@@ -34,6 +34,12 @@ export {
   recordCiResult,
   unblockNode,
 } from "./graph-policy.js";
+export {
+  markMergeQueued,
+  markMergeQueueEjected,
+  updateMergeQueueObservation,
+} from "./graph-merge-queue.js";
+export type { MergeQueueObservationInput } from "./graph-merge-queue.js";
 import { listEdges, listNodes, readyNodes } from "./graph-nodes.js";
 export {
   addEdge,

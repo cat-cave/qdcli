@@ -1,4 +1,5 @@
 import { evidenceFirstBlockerMigrationStatements } from "./schema-evidence-first.js";
+import { mergeQueueMigrationStatements } from "./schema-merge-queue.js";
 
 export const migrations = [
   {
@@ -369,5 +370,9 @@ export const migrations = [
       `alter table nodes add column pr_url text`,
       `create index if not exists idx_nodes_pr_number on nodes(pr_number)`,
     ],
+  },
+  {
+    id: "010_merge_queue_lifecycle",
+    statements: mergeQueueMigrationStatements,
   },
 ] as const;

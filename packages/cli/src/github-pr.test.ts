@@ -98,28 +98,24 @@ describe("GitHub PR adapter", () => {
     expect(await getNode(root, "read-only")).toMatchObject({ pr_number: null, pr_url: null });
   });
 
-  it("falls back to all checks when no required check set exists", async () => {
+  it("refuses to infer required checks when branch policy defines none", async () => {
     process.env.QD_FAKE_GH_MODE = "required-empty";
     const status = await githubPrStatus(root, await node());
-    expect(status.requiredChecksOnly).toBe(false);
-    expect(status.checks.map((check) => check.name)).toEqual(["all-ci"]);
-    expect(status.checkState).toBe("pass");
-
-    process.env.QD_FAKE_GH_MODE = "all-checks-error-output";
-    const noChecks = await githubPrStatus(root, await node("all-error-output"));
-    expect(noChecks).toMatchObject({
+    expect(status).toMatchObject({
       ok: false,
       requiredChecksOnly: false,
       checks: [],
       checkState: "no_checks",
+      readyToMerge: false,
+      branchPolicy: { source: "none", requiredChecks: [] },
     });
   });
 
   it("surfaces check, compare, and PR lookup failures", async () => {
     for (const [mode, message] of [
       ["view-fail", "Unable to resolve GitHub PR"],
-      ["checks-invalid", "non-array JSON"],
-      ["all-checks-fail", "gh pr checks failed: checks unavailable"],
+      ["checks-invalid", "paginated response must be an array"],
+      ["all-checks-fail", "Unable to read GitHub check runs"],
       ["compare-fail", "Unable to calculate PR drift: compare unavailable"],
       ["compare-invalid", "invalid behind count: no-number"],
       ["compare-negative", "invalid behind count: -1"],
@@ -267,6 +263,36 @@ if [ "$1 $2" = "pr checks" ]; then
   name=ci
   if [ "$mode" = "required-empty" ]; then name=all-ci; fi
   printf '[{"bucket":"pass","name":"%s","state":"SUCCESS","link":"https://example.test/ci","workflow":"CI"}]\n' "$name"
+  exit 0
+fi
+if [ "$1 $2" = "api graphql" ]; then
+  printf '{"data":{"repository":{"pullRequest":{"isInMergeQueue":false,"isMergeQueueEnabled":false,"autoMergeRequest":null,"mergeQueueEntry":null}}}}\n'
+  exit 0
+fi
+if [ "$1" = "api" ] && [[ "$*" == *"/rules/branches/"* ]]; then
+  if [ "$mode" = "rules-invalid" ]; then printf '{}\n'; exit 0; fi
+  if [ "$mode" = "required-empty" ]; then printf '[]\n'; exit 0; fi
+  printf '[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"ci","integration_id":null}]}}]\n'
+  exit 0
+fi
+if [ "$1" = "api" ] && [[ "$*" == *"/protection/required_status_checks"* ]]; then
+  printf 'Branch not protected (HTTP 404)\n' >&2
+  exit 1
+fi
+if [ "$1" = "api" ] && [[ "$*" == *"/check-runs"* ]]; then
+  if [ "$mode" = "checks-invalid" ]; then printf '{}\n'; exit 0; fi
+  if [ "$mode" = "all-checks-fail" ]; then printf 'checks unavailable\n' >&2; exit 2; fi
+  status=completed
+  conclusion=success
+  case "$mode" in
+    checks-pending) status=in_progress; conclusion=null ;;
+    checks-failed) conclusion=failure ;;
+  esac
+  printf '[{"check_runs":[{"name":"ci","status":"%s","conclusion":%s,"details_url":"https://example.test/ci","started_at":"2026-07-10T00:00:00Z","completed_at":"2026-07-10T00:01:00Z","app":{"id":1,"slug":"github-actions"}}]}]\n' "$status" "$( [ "$conclusion" = null ] && printf null || printf '"%s"' "$conclusion" )"
+  exit 0
+fi
+if [ "$1" = "api" ] && [[ "$*" == *"/statuses"* ]]; then
+  printf '[[]]\n'
   exit 0
 fi
 if [ "$1" = "api" ]; then

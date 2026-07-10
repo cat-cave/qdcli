@@ -20,6 +20,10 @@ qd ci status <id> --json
 qd ci status --all --json
 qd monitor --json
 qd sync-prs --json
+qd queue enqueue --all-ready --limit 8 --concurrency 4 --json
+qd queue sync --json
+qd queue drain --json
+qd queue bisect <id> --json
 qd diff <id> --self-only --base main --json
 qd milestone status --json
 qd velocity --json
@@ -80,4 +84,6 @@ interface QdAdvanceResult {
 }
 ```
 
-GitHub PR status payloads include canonical PR identity, every required check, aggregate `checkState`, `behind`, GitHub mergeability, `readyToMerge`, and a check evidence URL. All-node status/monitor payloads retain per-node errors rather than dropping an unavailable PR. `qd doctor <id>` uses stable reason codes such as `auditRequired`, `verificationRequired`, `ciRequired`, `staleBase`, and `mergeRecordRequired`.
+GitHub PR status payloads include canonical PR identity, branch-policy-derived required checks, aggregate `checkState`, `behind`, GitHub mergeability, `readyToEnqueue`, `readyToMerge`, and a check evidence URL. The nested `queue` object independently reports membership, position, entry state, merge-group SHA, merge-group checks, missing required contexts, and ejection reason. All-node status/monitor payloads retain per-node errors rather than dropping an unavailable PR.
+
+Queue batch commands preserve input priority order and return one result per node. `queue drain` returns only the wave captured when the command began. Merge policy payloads expose stable machine codes `not-enqueued`, `queued`, `ejected-from-queue`, `merge-group-check-failed`, and `queue-required-check-missing`. `qd doctor <id>` continues to use lifecycle reason codes such as `auditRequired`, `verificationRequired`, `ciRequired`, `staleBase`, and `mergeRecordRequired`.

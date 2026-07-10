@@ -99,6 +99,11 @@ export async function updateNode(
       | "branch"
       | "pr_number"
       | "pr_url"
+      | "merge_queue_entry_id"
+      | "merge_queue_enqueued_at"
+      | "merge_group_sha"
+      | "merge_queue_ejected_at"
+      | "merge_queue_ejection_reason"
       | "priority"
       | "risk"
       | "spec"
@@ -133,7 +138,9 @@ export async function updateNode(
     `update nodes set
       title = ?, kind = ?, milestone = ?, group_name = ?, projects_json = ?, status = ?, priority = ?, estimate_points = ?, risk = ?,
       owner = ?, branch = ?, spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?,
-      check_command = ?, ci_command = ?, blocked_by = ?, blocked_reason = ?, blocked_owner = ?, pr_number = ?, pr_url = ?, updated_at = ?
+      check_command = ?, ci_command = ?, blocked_by = ?, blocked_reason = ?, blocked_owner = ?, pr_number = ?, pr_url = ?,
+      merge_queue_entry_id = ?, merge_queue_enqueued_at = ?, merge_group_sha = ?, merge_queue_ejected_at = ?, merge_queue_ejection_reason = ?,
+      updated_at = ?
     where id = ?`,
     [
       next.title,
@@ -161,6 +168,11 @@ export async function updateNode(
       next.blocked_owner,
       next.pr_number,
       next.pr_url,
+      next.merge_queue_entry_id,
+      next.merge_queue_enqueued_at,
+      next.merge_group_sha,
+      next.merge_queue_ejected_at,
+      next.merge_queue_ejection_reason,
       next.updated_at,
       id,
     ],

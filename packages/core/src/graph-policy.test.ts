@@ -12,11 +12,14 @@ import {
   listFindings,
   listNodeNotes,
   listRuns,
+  markMergeQueued,
+  markMergeQueueEjected,
   markMerged,
   policyReport,
   recordCiResult,
   recordCheckResult,
   startRun,
+  updateMergeQueueObservation,
 } from "./index.js";
 import { installGraphFixture, passAudit, root } from "./graph-test-fixtures.js";
 
@@ -150,6 +153,88 @@ describe("graph policy lifecycle", () => {
     const merged = await markMerged(root, "a", "squash", { commitSha: "abc1234" });
 
     expect(merged.status).toBe("done");
+  });
+
+  it("records an idempotent async merge-queue lifecycle", async () => {
+    await addNode(root, {
+      id: "queued-node",
+      title: "Queue me",
+      spec: "Enter the native merge queue.",
+      acceptance: "The queue-produced commit is recorded.",
+    });
+    await passAudit("queued-node");
+    await ciPass(root, "queued-node");
+
+    const queued = await markMergeQueued(root, "queued-node", {
+      entryId: "MQE_1",
+      enqueuedAt: "2026-07-10T00:00:00Z",
+      mergeGroupSha: "group-a",
+      pullRequestUrl: "https://github.com/o/r/pull/1",
+    });
+    expect(queued).toMatchObject({
+      status: "queued",
+      merge_queue_entry_id: "MQE_1",
+      merge_group_sha: "group-a",
+      merge_queue_ejected_at: null,
+    });
+    expect(await markMergeQueued(root, "queued-node", { mergeGroupSha: "group-b" })).toMatchObject({
+      status: "queued",
+      merge_queue_entry_id: "MQE_1",
+      merge_group_sha: "group-b",
+    });
+    expect(
+      await recordCiResult(root, "queued-node", {
+        status: "passed",
+        summary: "head still green",
+      }),
+    ).toMatchObject({ status: "queued" });
+    expect(
+      await updateMergeQueueObservation(root, "queued-node", { entryId: "MQE_2" }),
+    ).toMatchObject({ status: "queued", merge_queue_entry_id: "MQE_2" });
+
+    const merged = await markMerged(root, "queued-node", "github-merge-queue", {
+      commitSha: "queue-produced-sha",
+    });
+    expect(merged).toMatchObject({ status: "done", done_at: expect.any(String) });
+    expect(
+      (await listRuns(root, { nodeId: "queued-node", kind: "merge" })).map((run) => run.status),
+    ).toEqual(["queued", "recorded"]);
+  });
+
+  it("returns an ejected merge-queue node to evidence-backed rework", async () => {
+    await addNode(root, {
+      id: "ejected-node",
+      title: "Eject me",
+      spec: "Handle a failed speculative group.",
+      acceptance: "The node returns to fixing with failure evidence.",
+    });
+    await passAudit("ejected-node");
+    await ciPass(root, "ejected-node");
+    await markMergeQueued(root, "ejected-node", {
+      entryId: "MQE_BAD",
+      mergeGroupSha: "bad-group",
+    });
+
+    const ejected = await markMergeQueueEjected(root, "ejected-node", {
+      reason: "merge-group checks failed: policy",
+      mergeGroupSha: "bad-group",
+    });
+
+    expect(ejected).toMatchObject({
+      status: "fixing",
+      merge_queue_entry_id: null,
+      merge_group_sha: "bad-group",
+      merge_queue_ejection_reason: "merge-group checks failed: policy",
+      merge_queue_ejected_at: expect.any(String),
+    });
+    expect(await latestRun(root, "ejected-node", "merge")).toMatchObject({
+      status: "ejected",
+      provider: "github",
+      git_sha: "bad-group",
+    });
+    await expect(markMerged(root, "ejected-node", "squash", { commitSha: "bad" })).rejects.toThrow(
+      /status fixing/,
+    );
   });
 
   it("reports policy violations for missing audit and verification evidence", async () => {

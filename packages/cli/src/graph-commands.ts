@@ -31,6 +31,7 @@ import { nodeInputFromOptions, nodeUpdateFromOptions, normalizeNodeInput } from 
 import { asRecord, optionalStringField, requiredNodeStringField } from "./object-utils.js";
 import { runPolicyHook } from "./shell.js";
 import {
+  enqueueNodePullRequest,
   githubPrStatus,
   linkNodePullRequest,
   mergeGitHubPullRequest,
@@ -183,6 +184,24 @@ export async function mergeCommand(
   if (!options["no-hooks"] && config.hooks.preMerge.trim()) {
     await runPolicyHook(root, config.hooks.preMerge, { root, node: id });
   }
+  if (options.enqueue) {
+    const queued = await enqueueNodePullRequest(root, id, { repo: stringOpt(options.repo) });
+    if (!options["no-hooks"] && config.hooks.postMerge.trim()) {
+      await runPolicyHook(root, config.hooks.postMerge, { root, node: id });
+    }
+    output(
+      {
+        ...queued.node,
+        operation: "merge-queue-enqueue",
+        gitIntegrated: false,
+        asynchronous: true,
+        pullRequest: queued.status.pr,
+        queue: queued.observation,
+      },
+      json,
+    );
+    return;
+  }
   let integration: Awaited<ReturnType<typeof mergeGitHubPullRequest>> | undefined;
   if (options["via-pr"]) {
     const current = await getNode(root, id);
@@ -192,6 +211,31 @@ export async function mergeCommand(
     const policy = await policyReport(root, id, "merge");
     if (!policy.ok) throw new Error(policy.violations.map((item) => item.message).join("; "));
     const status = await githubPrStatus(root, current, { repo: stringOpt(options.repo) });
+    if (config.mergeQueueMode === "required" && !status.queue.enabled) {
+      throw new Error(
+        `merge_queue_mode is required, but GitHub merge queue is not enabled for ${status.pr.baseRefName}`,
+      );
+    }
+    if (status.queue.enabled) {
+      const queued = await enqueueNodePullRequest(root, current, {
+        repo: stringOpt(options.repo),
+      });
+      if (!options["no-hooks"] && config.hooks.postMerge.trim()) {
+        await runPolicyHook(root, config.hooks.postMerge, { root, node: id });
+      }
+      output(
+        {
+          ...queued.node,
+          operation: "merge-queue-enqueue",
+          gitIntegrated: false,
+          asynchronous: true,
+          pullRequest: queued.status.pr,
+          queue: queued.observation,
+        },
+        json,
+      );
+      return;
+    }
     if (!status.readyToMerge) {
       throw new Error(
         `PR #${status.pr.number} is not ready to merge: checks=${status.checkState}, behind=${status.behind}, mergeability=${status.pr.mergeStateStatus}`,
@@ -290,6 +334,11 @@ async function nodeShowCommand(
         branch: node.branch,
         pr_number: node.pr_number ?? null,
         pr_url: node.pr_url ?? null,
+        merge_queue_entry_id: node.merge_queue_entry_id ?? null,
+        merge_queue_enqueued_at: node.merge_queue_enqueued_at ?? null,
+        merge_group_sha: node.merge_group_sha ?? null,
+        merge_queue_ejected_at: node.merge_queue_ejected_at ?? null,
+        merge_queue_ejection_reason: node.merge_queue_ejection_reason ?? null,
         group_name: node.group_name,
         projects: node.projects,
         blocked_by: node.blocked_by,
