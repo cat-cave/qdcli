@@ -21,6 +21,18 @@ Automated publishing uses npm Trusted Publishing from `.github/workflows/publish
 
 The first publish for each scoped package must be public.
 
+## Repository Governance
+
+Normal changes arrive through pull requests. `.github/workflows/ci.yml` exposes two required contexts, `quality` and `package`, on both `pull_request` and `merge_group`. The tracked `.github/rulesets/main.json` protects `main`, permits squash merges only, requires resolved review threads and both contexts, and enables a bounded native merge queue.
+
+After the workflow exists on the default branch, an administrator can apply the tracked repository merge settings and ruleset idempotently:
+
+```sh
+scripts/configure-github-repository.sh cat-cave/qdcli
+```
+
+The bootstrap change that first adds `merge_group` support must merge through an ordinary checked PR before enabling the queue; otherwise GitHub cannot run the required workflow for its speculative merge group. Once enabled, feature and release PRs use the same queue and required checks.
+
 ## Prepublish Validation
 
 Run:
@@ -29,33 +41,38 @@ Run:
 nix develop -c just release-check
 ```
 
-`just release-check` runs the full CI gate, npm tarball smoke, and Stryker mutation ratchet.
+`just release-check` runs the same required quality gate as pull requests plus the npm tarball smoke. It intentionally does not run mutation testing.
 
 `just npm-smoke` packs the actual core and CLI tarballs, installs them into a temporary npm prefix, and runs the installed `qd` binary through setup, doctor, JSON node creation, finding list, and export.
 
-`just mutation` runs Stryker across qd's core and CLI source, excluding tests, public barrel exports, and embedded prompt prose. The current release ratchet is `thresholds.break = 81`. String-literal and regex mutants are excluded because qd's parser-heavy import/config code creates low-signal churn there; state-machine, conditional, arithmetic, object, array, and method mutants remain in scope.
+`just mutation` runs Stryker across qd's core and CLI source, excluding tests, public barrel exports, and embedded prompt prose. The current ratchet is `thresholds.break = 81`. Mutation is a scheduled and manually dispatchable depth signal in `.github/workflows/mutation.yml`; it is not a required PR check and cannot hold a package release hostage. String-literal and regex mutants are excluded because qd's parser-heavy import/config code creates low-signal churn there; state-machine, conditional, arithmetic, object, array, and method mutants remain in scope.
 
-## 0.3.0 Reliability Release Checklist
+## Queue-Orchestration Release Checklist
 
 Before cutting 0.3.0, validate the package surface, evidence contracts, reconciliation flow, concurrent ledger reads, and fake-`gh` PR integration harness:
 
 ```sh
 nix develop -c corepack pnpm exec vp check
 nix develop -c corepack pnpm exec vp test run --coverage
-nix develop -c corepack pnpm exec vitest run packages/cli/src/cli-strict-method.e2e.test.ts packages/cli/src/cli-reconcile-reliability.e2e.test.ts packages/cli/src/cli-github-pr.e2e.test.ts
+nix develop -c corepack pnpm exec vp test run packages/cli/src/cli-strict-method.e2e.test.ts packages/cli/src/cli-reconcile-reliability.e2e.test.ts packages/cli/src/cli-github-pr.e2e.test.ts
 nix develop -c just npm-smoke
-nix develop -c just mutation
 nix build .#packages.x86_64-linux.qd
 nix develop -c corepack pnpm exec vp run pack
 ```
 
-For the release itself, use the approved Changesets flow:
+Mutation can be run separately when investigating the scheduled signal:
+
+```sh
+nix develop -c just mutation
+```
+
+For the release itself, use the approved Changesets and pull-request flow. Add the changeset to the feature PR. Prepare generated version files on a release branch, open a release PR, and merge it through the same required checks. Tag only the resulting commit on `main`:
 
 ```sh
 nix develop -c just changeset
-nix develop -c just release-version
+nix develop -c just release-version # on a release branch
 nix develop -c just release-check
-nix develop -c just release-tag
+nix develop -c just release-tag     # after the release PR is on main
 nix develop -c just release-push
 ```
 
@@ -79,7 +96,7 @@ For a change that should be released, add a changeset before merging:
 nix develop -c just changeset
 ```
 
-When preparing a release:
+When preparing a release, run versioning on a release branch and submit the generated package/changelog/lockfile changes as a PR:
 
 ```sh
 nix develop -c just release-version
@@ -88,7 +105,7 @@ nix develop -c just release-tag
 nix develop -c just release-push
 ```
 
-`just release-version` runs `changeset version` and refreshes the pnpm lockfile. `just release-tag` commits the generated package version/changelog changes and creates `v<@cat-cave/qdcli version>`. `just release-push` pushes `main` and the exact version tag, which triggers `.github/workflows/publish.yml`.
+`just release-version` runs `changeset version` and refreshes the pnpm lockfile. After the release PR merges, `just release-tag` requires a clean tree and creates the exact `v<@cat-cave/qdcli version>` tag on that `main` commit. Pushing the tag triggers `.github/workflows/publish.yml`.
 
 The core and CLI packages are configured as a fixed Changesets group, so they version together. The viewer app remains a private workspace package, but its built static assets are embedded into the published CLI package.
 
@@ -124,6 +141,6 @@ Configure each package on npmjs.com under package Settings -> Trusted Publishing
 - Workflow filename: `publish.yml`
 - Allowed action: `npm publish`
 
-The workflow runs the same full `release-check` gate, including mutation testing, then lets Changesets publish the core and CLI packages through pnpm using npm's OIDC trusted publisher flow.
+The workflow runs the same required quality and package-smoke gates, then lets Changesets publish the core and CLI packages through pnpm using npm's OIDC trusted publisher flow. Mutation testing remains on its independent scheduled/manual workflow.
 
 The workflow runs `changeset publish --no-git-tag`. Changesets detects pnpm and publishes only packages whose local version is newer than npm, while pnpm handles workspace dependency rewriting. Git tags are owned by qd's `v<version>` release tags, so package-specific Changesets tags are disabled.

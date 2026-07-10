@@ -292,6 +292,25 @@ language-agnostic; webhook, chat, email, and issue-comment adapters can follow.
 Notification does not make the blocker less severe. It only ensures the right
 owner sees it while the orchestrator moves to unrelated ready work.
 
+## Parallel PR Admission And Failure Isolation
+
+The central orchestrator may keep many implementation and audit agents active in separate worktrees. Every worktree must have one node, one claimed branch, one open assignment, and one PR identity. Shared ledger writes remain short; hosted CI and merge-queue waits happen outside the database lock.
+
+Treat merge capacity as bounded admission control, not an unbounded race:
+
+```sh
+qd monitor --json
+qd ready --mergeable --json
+qd queue enqueue --all-ready --wave <wave-id> --limit 8 --concurrency 4 --json
+qd queue drain --interval 10 --timeout 3600 --json
+```
+
+The admission order follows qd priority and node creation order. `--wave` limits admission to explicit wave membership, `--limit` caps that wave, and `--concurrency` caps simultaneous GitHub operations. A queue-enabled branch owns speculative freshness, so an orchestrator must not create rebase churn while PRs are queued. Monitor PR-head checks and merge-group checks as different facts.
+
+GitHub can build several PRs together and eject them together. qd preserves their common merge-group SHA. `qd queue bisect <ejected-node> --json` produces deterministic, point-balanced halves; re-enqueue one half at a time, discard a passing half from suspicion, and recursively inspect the failing half. This is a diagnostic plan, not permission to bypass each node's audit, verification, or CI evidence.
+
+Queue reconciliation is idempotent. A queue-produced merge records GitHub's SHA and moves the node to `done`; ejection records the failed group and moves the node to `fixing`; an unrelated historical blocker does not poison `queue drain` for the active wave. These properties let an orchestrator restart after interruption without inventing state from chat memory.
+
 ## Periodic Reality Checks
 
 Spec-level audits are not enough. The orchestrator must periodically examine

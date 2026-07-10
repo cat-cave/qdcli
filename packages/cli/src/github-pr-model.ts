@@ -19,6 +19,8 @@ export interface GitHubPrCheck {
   state: string;
   link: string;
   workflow: string;
+  required?: boolean;
+  source?: "check-run" | "status" | "missing";
 }
 
 export type GitHubCheckState = "pass" | "fail" | "pending" | "queued" | "no_checks";

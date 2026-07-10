@@ -21,6 +21,12 @@ If neither is set, qd uses the nearest ancestor `.qd/` directory. If no ancestor
 - `qd ready --mergeable [--json]`
 - `qd monitor [--json]`
 - `qd sync-prs [--rebase] [--json]`
+- `qd queue status [node] [--json]`
+- `qd queue enqueue <node> [--json]`
+- `qd queue enqueue --all-ready [--wave <id>] [--limit <n>] [--concurrency <n>] [--json]`
+- `qd queue sync [node] [--json]`
+- `qd queue watch|drain [node] [--interval <seconds>] [--timeout <seconds>] [--json]`
+- `qd queue bisect|cohort <node> [--merge-group <sha>] [--json]`
 - `qd graph --format table|json|mermaid|dot`
 - `qd validate [--json]`
 - `qd export [--out <json>|-] [--deterministic] [--status ready,claimed] [--milestone <name>]`
@@ -62,16 +68,21 @@ For agent-facing JSON output, see [JSON Contract](./json.md).
 Configure the existing GitHub adapter, then link PR identity explicitly or let qd resolve the node branch:
 
 ```sh
-qd config set ci-provider github --repo owner/repo --workflow ci.yml --auth gh-cli
+qd config set ci-provider github --repo owner/repo --auth gh-cli
+qd config set merge-queue-mode auto
 qd claim <node> --agent <name> --branch spec/<node> --pr <number-or-url>
 qd node set-pr <node> <number-or-url>
 ```
 
-`qd ci status <node>` aggregates `gh pr checks --required`, falling back to the complete check rollup when no required set is configured. It reports pass, fail, pending, queued, or no-checks; PR mergeability; and the exact behind count from GitHub's compare API. `qd ci watch <node>` waits for a terminal aggregate result. `qd ci status --all` and `qd monitor` show every in-flight node in one dashboard.
+`qd ci status <node>` reads the target branch's applied ruleset or classic protection, then evaluates exactly those required contexts on the PR head. An always-present successful required check is accepted without trying to model its internal path conditions. It reports pass, fail, pending, queued, missing, or no-checks; PR mergeability; and the exact behind count. `qd ci watch <node>` waits for a terminal aggregate result. `qd ci status --all` and `qd monitor` show every in-flight node in one dashboard.
 
-`qd sync-prs` refreshes all in-flight PRs and records a structured GitHub CI pass only when required checks are concluded-success, the PR is not behind, and qd's audit/verification policy is satisfied. Add `--rebase` to request `gh pr update-branch --rebase` for stale branches; rebased PRs are rechecked on the next refresh.
+`qd sync-prs` refreshes all in-flight PRs and records a structured GitHub CI pass only when required checks are concluded-success and qd's audit/verification policy is satisfied. Add `--rebase` to request `gh pr update-branch --rebase` for stale branches. When the target has a merge queue, speculative merge-group builds own freshness, so qd reports drift without rebasing or blocking queue eligibility.
 
-`qd ready --mergeable` shows linked nodes that are ledger-mergeable, green, conflict-free, and not behind. `qd merge <node> --via-pr` revalidates those facts, calls `gh pr merge` with the configured strategy and `--match-head-commit`, waits for GitHub's resulting merge SHA, then records the ledger transition. The existing `--use-existing-commit` mode never runs git or GitHub operations.
+`qd ready --mergeable` shows linked nodes that are ledger-mergeable, green, conflict-free, and ready either for direct merge or queue entry. `qd merge <node> --via-pr` directly merges when no queue is active. With a native queue it enables auto-merge with head-SHA protection and moves the ledger to `queued`; GitHub later chooses the merge SHA.
+
+`qd queue sync` reconciles queued PRs. A merged PR moves to `done` with GitHub's merge commit; a queue ejection moves to `fixing` and preserves merge-group SHA and failure reason. `qd queue drain` repeats reconciliation for only the wave that was queued when it started. `qd monitor` exposes queue membership, position, entry state, merge-group SHA, and merge-group checks separately from PR-head checks. `qd queue bisect` groups every node sharing a failed merge-group SHA into deterministic, point-balanced halves for an orchestrator to re-enqueue and isolate.
+
+`qd policy evaluate <node> --phase merge` includes stable queue codes: `not-enqueued`, `queued`, `ejected-from-queue`, `merge-group-check-failed`, and `queue-required-check-missing`. `merge_queue_mode` is `auto` by default; use `required` to reject non-queue integration or `off` for repositories without a native queue. `ci_workflow` remains available only for legacy workflow polling. The existing `--use-existing-commit` mode never runs git or GitHub operations.
 
 ## Method and Templates
 
@@ -403,18 +414,18 @@ qd prompt audit <node> --diff-tool sem
 - `qd merge <node> --use-existing-commit <sha> [--strategy squash|merge|rebase]`
 - `qd merge <node> --via-pr [--strategy squash|merge|rebase]`
 
-`qd merge` always enforces the ledger merge gate. In `--via-pr` mode it also verifies the linked PR's aggregate required checks and base drift, performs the real GitHub merge, captures the resulting commit, and marks the node `done`. In `--use-existing-commit` mode it only records an integration already performed elsewhere.
+`qd merge` always enforces the ledger merge gate. In `--via-pr` mode it verifies branch-policy-required checks and either performs the direct GitHub merge or records asynchronous queue entry. `qd queue sync|drain` records the queue-produced commit and marks the node `done`. In `--use-existing-commit` mode it only records an integration already performed elsewhere.
 
 For direct-to-main or external merge workflows, pass `--use-existing-commit <sha>` after the real merge has happened. qd stores that commit in the merge run's structured `git_sha`. In `--via-pr` mode, `--strategy` is passed to `gh pr merge`; in existing-commit mode it remains recorded workflow metadata.
 
 Provider polling is adapter-based. The first adapter is GitHub through the `gh` CLI:
 
 ```sh
-qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd config set ci-provider github --repo owner/name --auth gh-cli
 qd ci poll <node> --sha <commit>
 ```
 
-Unsupported providers fail loudly. Configure local commands with `ci_command` when a provider adapter is not available.
+Legacy `ci poll` can still pin `--workflow ci.yml`; PR status, monitor, sync, and queue commands derive their required contexts from branch rules instead. Unsupported providers fail loudly. Configure local commands with `ci_command` when a provider adapter is not available.
 
 ## Installed CLI Notes
 

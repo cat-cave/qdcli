@@ -8,6 +8,7 @@ export interface QdConfig {
   ciWorkflow: string;
   ciAuth: "gh-cli";
   mergeStrategy: "squash" | "merge" | "rebase";
+  mergeQueueMode: "auto" | "required" | "off";
   requireCleanWorktree: boolean;
   cleanWorktreeExcept: string[];
   requireGateBeforeCi: boolean;
@@ -55,6 +56,7 @@ export const defaultConfig: QdConfig = {
   ciWorkflow: "",
   ciAuth: "gh-cli",
   mergeStrategy: "squash",
+  mergeQueueMode: "auto",
   requireCleanWorktree: true,
   cleanWorktreeExcept: [".qd/"],
   requireGateBeforeCi: true,
@@ -104,6 +106,7 @@ export function parseConfig(content: string): QdConfig {
     "ci_workflow",
     "ci_auth",
     "merge_strategy",
+    "merge_queue_mode",
     "require_clean_worktree",
     "clean_worktree_except",
     "require_gate_before_ci",
@@ -163,6 +166,7 @@ export function parseConfig(content: string): QdConfig {
     ciWorkflow: requiredStringValue(values, "ci_workflow", true),
     ciAuth: requiredCiAuthValue(values, "ci_auth"),
     mergeStrategy: requiredMergeStrategyValue(values, "merge_strategy"),
+    mergeQueueMode: optionalMergeQueueModeValue(values, "merge_queue_mode"),
     requireCleanWorktree: requiredBooleanValue(values, "require_clean_worktree"),
     cleanWorktreeExcept: requiredStringArrayValue(values, "clean_worktree_except"),
     requireGateBeforeCi: requiredBooleanValue(values, "require_gate_before_ci"),
@@ -230,6 +234,7 @@ ci_repo = "${escapeTomlString(config.ciRepo)}"
 ci_workflow = "${escapeTomlString(config.ciWorkflow)}"
 ci_auth = "${config.ciAuth}"
 merge_strategy = "${config.mergeStrategy}"
+merge_queue_mode = "${config.mergeQueueMode}"
 require_clean_worktree = ${config.requireCleanWorktree}
 clean_worktree_except = [${config.cleanWorktreeExcept.map((item) => `"${escapeTomlString(item)}"`).join(", ")}]
 require_gate_before_ci = ${config.requireGateBeforeCi}
@@ -361,6 +366,16 @@ function requiredMergeStrategyValue(
   const value = values[key];
   if (value === "squash" || value === "merge" || value === "rebase") return value;
   throw new Error(`${key} must be squash, merge, or rebase`);
+}
+
+function optionalMergeQueueModeValue(
+  values: Record<string, unknown>,
+  key: string,
+): QdConfig["mergeQueueMode"] {
+  const value = values[key];
+  if (value === undefined) return "auto";
+  if (value === "auto" || value === "required" || value === "off") return value;
+  throw new Error(`${key} must be auto, required, or off`);
 }
 
 function requiredCiProviderValue(

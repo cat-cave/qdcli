@@ -15,6 +15,12 @@ export function requiresMethodAcknowledgement(
   if (group === "verification" && (action === "list" || action === "validate" || !action)) {
     return false;
   }
+  if (
+    group === "queue" &&
+    (action === "status" || action === "bisect" || action === "cohort" || !action)
+  ) {
+    return false;
+  }
   if (group === "milestone" && (action === "status" || action === "next" || !action)) return false;
   return true;
 }

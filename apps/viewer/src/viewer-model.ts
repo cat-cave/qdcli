@@ -30,6 +30,7 @@ export const statuses: NodeStatus[] = [
   "fixing",
   "ci",
   "mergeable",
+  "queued",
   "done",
   "regressed",
   "blocked",

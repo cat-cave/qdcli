@@ -137,7 +137,9 @@ export async function ciPass(root: string, nodeId: string, summary = "CI passed"
     "insert into runs (id, node_id, kind, status, started_at, finished_at, summary) values (?, ?, 'ci', 'passed', ?, ?, ?)",
     [randomUUID(), nodeId, now, now, summary],
   );
-  await run(db, "update nodes set status = 'mergeable', updated_at = ? where id = ?", [
+  const current = await getNode(root, nodeId);
+  await run(db, "update nodes set status = ?, updated_at = ? where id = ?", [
+    current.status === "queued" || current.status === "done" ? current.status : "mergeable",
     now,
     nodeId,
   ]);
@@ -188,7 +190,9 @@ export async function recordCiResult(
     input.status === "passed"
       ? current.status === "done"
         ? "done"
-        : "mergeable"
+        : current.status === "queued"
+          ? "queued"
+          : "mergeable"
       : current.status === "done"
         ? "regressed"
         : "blocked";
@@ -330,8 +334,8 @@ export async function markMerged(
 ): Promise<QdNode> {
   const config = await readConfig(root);
   const node = await getNode(root, nodeId);
-  if (node.status !== "mergeable")
-    throw new Error(`Cannot merge node with status ${node.status}; expected mergeable`);
+  if (node.status !== "mergeable" && node.status !== "queued")
+    throw new Error(`Cannot merge node with status ${node.status}; expected mergeable or queued`);
   const gate = await gateNode(root, nodeId);
   if (!gate.ok)
     throw new Error(

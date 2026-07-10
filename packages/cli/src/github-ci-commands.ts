@@ -1,4 +1,13 @@
-import { listNodes, policyReport, recordCiResult, type QdNode } from "@cat-cave/qdcli-core";
+import {
+  listNodes,
+  markMergeQueued,
+  markMergeQueueEjected,
+  markMerged,
+  policyReport,
+  recordCiResult,
+  updateMergeQueueObservation,
+  type QdNode,
+} from "@cat-cave/qdcli-core";
 import { numberOpt, output, stringOpt } from "./args.js";
 import { githubPrStatus, updateGitHubPullRequestBranch, type GitHubPrStatus } from "./github-pr.js";
 import { sleep } from "./shell.js";
@@ -10,6 +19,7 @@ const IN_FLIGHT_STATUSES = new Set([
   "fixing",
   "ci",
   "mergeable",
+  "queued",
   "blocked",
 ]);
 
@@ -77,19 +87,108 @@ export async function syncPullRequestsCommand(
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
-  const nodes = (await listNodes(root)).filter((node) => IN_FLIGHT_STATUSES.has(node.status));
-  const results = [];
+  const results = await syncPullRequests(root, options);
+  const ok = results.every((result) => result.action !== "error");
+  output({ ok, nodes: results }, json);
+  if (!ok) process.exitCode = 1;
+}
+
+export async function syncPullRequests(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+  nodeId?: string,
+) {
+  const nodes = (await listNodes(root)).filter(
+    (node) =>
+      IN_FLIGHT_STATUSES.has(node.status) &&
+      githubTrackable(node) &&
+      (!nodeId || node.id === nodeId),
+  );
+  const results: Array<Record<string, unknown> & { nodeId: string; action: string }> = [];
   for (const node of nodes) {
     try {
       const status = await githubPrStatus(root, node, { repo: stringOpt(options.repo) });
-      if (options.rebase && status.behind > 0) {
+      if (status.pr.state === "MERGED") {
+        const commitSha = status.pr.mergeCommit?.oid;
+        if (!commitSha) throw new Error(`Merged PR #${status.pr.number} has no merge commit SHA`);
+        if (node.status === "queued" || node.status === "mergeable") {
+          const updated = await markMerged(root, node.id, "github-merge-queue", { commitSha });
+          results.push({
+            nodeId: node.id,
+            action: "reconciled-merged",
+            status,
+            node: updated,
+            commitSha,
+          });
+        } else {
+          results.push({
+            nodeId: node.id,
+            action: "merged-needs-reconciliation",
+            status,
+            commitSha,
+          });
+        }
+        continue;
+      }
+      if (node.status === "queued" && status.queue.membership === "ejected") {
+        const reason = status.queue.ejectionReason ?? "GitHub removed the PR from the merge queue";
+        const updated = await markMergeQueueEjected(root, node.id, {
+          reason,
+          mergeGroupSha: status.queue.mergeGroupSha,
+          pullRequestUrl: status.pr.url,
+        });
+        results.push({ nodeId: node.id, action: "ejected-to-fixing", status, node: updated });
+        continue;
+      }
+      if (node.status === "queued") {
+        const updated = await updateMergeQueueObservation(root, node.id, {
+          entryId: status.queue.entryId,
+          enqueuedAt: status.queue.enqueuedAt,
+          mergeGroupSha: status.queue.mergeGroupSha,
+          pullRequestUrl: status.pr.url,
+        });
+        results.push({
+          nodeId: node.id,
+          action:
+            status.queue.membership === "queued" ? "queue-observation-updated" : "awaiting-queue",
+          status,
+          node: updated,
+        });
+        continue;
+      }
+      if (node.status === "fixing" && status.queue.membership === "ejected") {
+        results.push({ nodeId: node.id, action: "rework-required", status });
+        continue;
+      }
+      if (node.status === "mergeable" && status.queue.membership === "queued") {
+        const updated = await markMergeQueued(root, node.id, {
+          entryId: status.queue.entryId,
+          enqueuedAt: status.queue.enqueuedAt,
+          mergeGroupSha: status.queue.mergeGroupSha,
+          pullRequestUrl: status.pr.url,
+        });
+        results.push({
+          nodeId: node.id,
+          action: "adopted-external-enqueue",
+          status,
+          node: updated,
+        });
+        continue;
+      }
+      if (options.rebase && status.behind > 0 && !status.behindIgnoredByQueue) {
         await updateGitHubPullRequestBranch(root, status, true);
         results.push({ nodeId: node.id, action: "rebase-requested", status });
         continue;
       }
       const policy = await policyReport(root, node.id, "ci");
       if (!status.readyToMerge || !policy.ok) {
-        results.push({ nodeId: node.id, action: "none", status, policy });
+        results.push({
+          nodeId: node.id,
+          action:
+            options.rebase && status.behindIgnoredByQueue ? "rebase-suppressed-by-queue" : "none",
+          status,
+          policy,
+        });
         continue;
       }
       if (node.status === "mergeable") {
@@ -112,9 +211,7 @@ export async function syncPullRequestsCommand(
       });
     }
   }
-  const ok = results.every((result) => result.action !== "error");
-  output({ ok, nodes: results }, json);
-  if (!ok) process.exitCode = 1;
+  return results;
 }
 
 export async function githubMergeQueue(
@@ -124,7 +221,10 @@ export async function githubMergeQueue(
   const statuses = await githubStatusesForAll(root, options);
   return statuses.filter(
     (status): status is GitHubPrStatus =>
-      "readyToMerge" in status && status.ledgerStatus === "mergeable" && status.readyToMerge,
+      "readyToMerge" in status &&
+      status.ledgerStatus === "mergeable" &&
+      status.readyToMerge &&
+      (status.queue.membership === "not-enqueued" || status.queue.membership === "disabled"),
   );
 }
 
@@ -163,8 +263,9 @@ async function githubStatusesForAll(
   options: Record<string, string | string[] | boolean>,
 ): Promise<MonitorStatus[]> {
   const nodes = (await listNodes(root)).filter((node) => IN_FLIGHT_STATUSES.has(node.status));
+  const trackedNodes = nodes.filter(githubTrackable);
   return Promise.all(
-    nodes.map(async (node): Promise<MonitorStatus> => {
+    trackedNodes.map(async (node): Promise<MonitorStatus> => {
       try {
         return await githubPrStatus(root, node, { repo: stringOpt(options.repo) });
       } catch (error) {
@@ -178,6 +279,10 @@ async function githubStatusesForAll(
   );
 }
 
+function githubTrackable(node: QdNode): boolean {
+  return Boolean(node.pr_url || node.pr_number || node.branch);
+}
+
 export function monitorRows(statuses: MonitorStatus[]): Array<Record<string, unknown>> {
   return statuses.map((status) =>
     "error" in status
@@ -188,19 +293,50 @@ export function monitorRows(statuses: MonitorStatus[]): Array<Record<string, unk
           pr: `#${status.pr.number}`,
           checks: status.checkState,
           behind: status.behind,
+          drift: status.behindIgnoredByQueue
+            ? "queue-managed"
+            : status.behind > 0
+              ? "stale"
+              : "current",
           mergeability: status.pr.mergeStateStatus,
+          queue: status.queue.membership,
+          position: status.queue.position,
+          mergeGroup: status.queue.entryState,
+          mergeGroupChecks: status.queue.checkState,
           ledger: status.ledgerStatus,
         },
   );
 }
 
 export function statusIsNonFailing(status: MonitorStatus): boolean {
-  return !("error" in status) && status.checkState !== "fail";
+  return (
+    !("error" in status) &&
+    status.checkState !== "fail" &&
+    status.queue.checkState !== "fail" &&
+    status.queue.membership !== "ejected"
+  );
 }
 
 export function monitorExitCode(statuses: MonitorStatus[]): 1 | 8 | undefined {
-  if (statuses.some((status) => "error" in status || status.checkState === "fail")) return 1;
-  if (statuses.some((status) => "error" in status || status.checkState !== "pass")) return 8;
+  if (
+    statuses.some(
+      (status) =>
+        "error" in status ||
+        status.checkState === "fail" ||
+        status.queue.checkState === "fail" ||
+        status.queue.membership === "ejected",
+    )
+  )
+    return 1;
+  if (
+    statuses.some(
+      (status) =>
+        "error" in status ||
+        status.checkState !== "pass" ||
+        (status.queue.membership === "queued" && status.queue.checkState !== "pass"),
+    )
+  )
+    return 8;
   return undefined;
 }
 

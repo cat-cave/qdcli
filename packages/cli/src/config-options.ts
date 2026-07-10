@@ -18,6 +18,12 @@ export function setConfigValue(config: QdConfig, key: string, value: string): Qd
     }
     return { ...config, mergeStrategy: value };
   }
+  if (key === "merge_queue_mode" || key === "merge-queue-mode") {
+    if (value !== "auto" && value !== "required" && value !== "off") {
+      throw new Error("merge_queue_mode must be auto, required, or off");
+    }
+    return { ...config, mergeQueueMode: value };
+  }
   if (key === "require_clean_worktree" || key === "require-clean-worktree") {
     return { ...config, requireCleanWorktree: parseBoolean(value, key) };
   }
@@ -102,7 +108,6 @@ export function setCiProviderConfig(
   const workflow = stringOpt(options.workflow) ?? config.ciWorkflow;
   const auth = stringOpt(options.auth) ?? config.ciAuth;
   if (!repo.trim()) throw new Error("--repo is required when setting ci-provider github");
-  if (!workflow.trim()) throw new Error("--workflow is required when setting ci-provider github");
   if (auth !== "gh-cli") throw new Error("--auth must be gh-cli");
   return {
     ...config,
@@ -122,6 +127,7 @@ export function getConfigValue(config: QdConfig, key: string): unknown {
   if (key === "ci_auth" || key === "ci-auth") return config.ciAuth;
   if (key === "skills_dir" || key === "skills-dir") return config.skillsDir;
   if (key === "merge_strategy" || key === "merge-strategy") return config.mergeStrategy;
+  if (key === "merge_queue_mode" || key === "merge-queue-mode") return config.mergeQueueMode;
   if (key === "require_clean_worktree" || key === "require-clean-worktree")
     return config.requireCleanWorktree;
   if (key === "clean_worktree_except" || key === "clean-worktree-except")

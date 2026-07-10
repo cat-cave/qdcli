@@ -38,6 +38,11 @@ Core:
   qd ready --mergeable [--json]
   qd monitor [--json]
   qd sync-prs [--rebase] [--json]
+  qd queue status [node] [--json]
+  qd queue enqueue <node>|--all-ready [--wave <id>] [--limit <n>] [--concurrency 4]
+  qd queue sync [node] [--json]
+  qd queue watch <node>|drain [--interval 10] [--timeout 3600]
+  qd queue bisect <node>|--merge-group <sha> [--json]
   qd graph --format table|json|mermaid|dot
   qd velocity [--window 7]
   qd critical-path [--milestone <name>]
@@ -50,7 +55,8 @@ Core:
   qd config show
   qd config get ci-command
   qd config set check-command "<fast project check command>"
-  qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+  qd config set ci-provider github --repo owner/name --auth gh-cli
+  qd config set merge-queue-mode auto|required|off
   qd export [--out <path>|-] [--deterministic]  # defaults to roadmap/spec-dag.json
   qd export --status ready,claimed,review --milestone alpha [--json]
   qd import --from <source> [--schema-mapping qd-import-map.json] [--dry-run] [--verbose] [--replace]
@@ -101,7 +107,7 @@ Audit:
   qd verification sign-off <node> --index <n> --note <text> [--evidence <path>]
   qd verification sign-off <node> --all --from-report <verification-signoff.json>
   qd audit pass <node> --from-report <audit-report.json>
-  qd merge <node> (--via-pr|--use-existing-commit <sha>)
+  qd merge <node> (--enqueue|--via-pr|--use-existing-commit <sha>)
 
 Viewer:
   qd view [--host 127.0.0.1] [--port 5173] [--open] [--json]
@@ -143,11 +149,13 @@ export function commandHelp(group: string, action?: string): string {
     "ci run":
       "qd ci run <node> [--cmd <command>] [--no-hooks]\nRuns the configured full CI command and records log evidence.",
     merge:
-      "qd merge <node> [--strategy squash|merge|rebase] (--via-pr|--use-existing-commit <sha>) [--no-hooks]\n--via-pr verifies required checks and drift, runs gh pr merge with head-SHA protection, and records the resulting merge commit. Existing-commit mode remains ledger-only.",
+      "qd merge <node> [--strategy squash|merge|rebase] (--enqueue|--via-pr|--use-existing-commit <sha>) [--no-hooks]\n--enqueue explicitly enters GitHub's native merge queue. In merge_queue_mode=auto, --via-pr also enqueues when the target branch requires a queue; qd sync-prs records the queue-produced SHA asynchronously. Existing-commit mode remains ledger-only.",
     monitor:
-      "qd monitor [--json]\nShows every in-flight node with PR number, aggregate required-check state, behind count, mergeability, and ledger status.",
+      "qd monitor [--json]\nShows every in-flight node with PR-head required checks, queue membership/position, merge-group checks, drift policy, mergeability, and ledger status.",
     "sync-prs":
-      "qd sync-prs [--rebase] [--json]\nRefreshes all in-flight PRs, records verified green CI when audit/verifications are satisfied, and optionally rebases stale PR branches.",
+      "qd sync-prs [--rebase] [--json]\nRefreshes all in-flight PRs, records verified green CI, reconciles queue-produced merges, and returns ejected nodes to fixing. Rebase is suppressed while a native queue owns freshness.",
+    queue:
+      "qd queue status [node] | enqueue <node>|--all-ready [--limit <n>] [--concurrency 4] | sync [node] | watch <node> | drain | bisect <node>|--merge-group <sha>\nProvides idempotent single/batch enqueue, live merge-group visibility, asynchronous reconciliation, bounded-concurrency orchestration, drain monitoring, and deterministic failed-cohort bisection plans.",
     audit:
       "qd audit start|pass|fail|dispose|cancel|supersede|list <node>\nTracks audit run lifecycle and findings.",
     "audit pass":
@@ -156,7 +164,7 @@ export function commandHelp(group: string, action?: string): string {
       "qd assignment add|complete|fail|cancel|list\nRecords opaque external worker/auditor ownership. qd does not launch agents.",
     wave: "qd wave start|add-node|add-assignment|complete|status\nRecords wave-level orchestration state.",
     policy:
-      "qd policy evaluate <node> --phase ci|merge [--json]\nReports configured lifecycle policy violations as stable codes.",
+      "qd policy evaluate <node> --phase ci|merge [--json]\nReports configured lifecycle policy violations and stable merge-queue codes such as not-enqueued, queued, ejected-from-queue, merge-group-check-failed, and queue-required-check-missing.",
     diff: "qd diff <node> [--base main] [--self-only] [--working] [--tool git|sem|inspect] [--format markdown|json|plain]\nPrints committed or worktree-local node diffs. git is built in; sem and inspect are explicit optional adapters and fail loudly when unavailable.",
     worktree:
       "qd worktree create|env|status|list|cleanup <node> [--base main]\nCreates git worktrees, records node branches, reports dirty/ahead/behind state, and writes worktree-local env files without storing env values in qd.",
@@ -169,7 +177,7 @@ export function commandHelp(group: string, action?: string): string {
 export function topicHelp(topic: string): string {
   const topics: Record<string, string> = {
     lifecycle:
-      "qd lifecycle: ready -> claim -> evidence-backed complete -> independent audit -> gate -> check -> ci -> real repo merge -> qd merge record.\nP0/P1 findings, missing evidence, blockers, and running audits stop advancement.",
+      "qd lifecycle: ready -> claim -> evidence-backed complete -> independent audit -> gate -> check -> ci -> mergeable -> queued -> done.\nGitHub queue reconciliation records the queue-produced merge SHA; ejection returns the node to fixing with failing-check evidence.",
     audits:
       "qd audits: audit means independent evidence review against diff, spec, acceptance, verification, real-world validation, and failure paths. CI is not an audit. Missing required evidence is P1.",
     worktrees:
@@ -179,7 +187,7 @@ export function topicHelp(topic: string): string {
     assignments:
       "qd assignments: record role, owner, branch, worktree, scope, commits, and evidence. Owner strings are opaque and agent-agnostic.",
     waves:
-      "qd waves: group nodes and assignments into orchestration waves, then complete the wave with a summary.",
+      "qd waves: group nodes and assignments into orchestration waves, batch-enqueue ready PRs with qd queue enqueue --all-ready, then drain and reconcile the wave through qd queue drain.",
     gates:
       "qd gates: qd gate blocks on open P0/P1 findings, running audit runs, explicit node blockers, and incomplete dependencies. Use qd gate <node> --phase ci|merge when deciding whether policy allows CI or merge.",
     policies:

@@ -8,7 +8,7 @@ The portable, committed source of truth is the qd JSON export:
 qd export --out roadmap/spec-dag.json
 ```
 
-Current qd exports use `schema_version: 2`. qd still accepts `schema_version: 1` exports from older qd releases and normalizes absent optional node fields to `null` or `[]`. Unknown future schema versions fail loudly.
+Current qd exports use `schema_version: 3`. qd still accepts `schema_version: 1` and `schema_version: 2` exports from older qd releases and normalizes absent optional node fields to `null` or `[]`. Unknown future schema versions fail loudly.
 
 That export has `schema_version`, `exported_at`, `registries`, `nodes`, `edges`, `findings`, `runs`, `node_notes`, `assignments`, `waves`, and `wave_memberships`. A fresh clone can rebuild its local DB cache with:
 
@@ -126,7 +126,7 @@ blocked, split, or revised instead of completed.
 
 `qd ci poll <node>` uses a configured provider adapter to wait for hosted CI and record the same pass/fail result. The first adapter is GitHub through `gh`; unsupported providers should be added as adapters rather than encoded into node schema.
 
-Nodes may store `pr_number` and `pr_url`, populated by `qd claim --pr`, `qd node set-pr`, or branch auto-detection. `qd merge --via-pr` uses that identity to perform a protected GitHub merge and record its resulting commit. `qd merge --use-existing-commit <sha>` remains ledger-only for integrations performed elsewhere.
+Nodes may store `pr_number` and `pr_url`, populated by `qd claim --pr`, `qd node set-pr`, or branch auto-detection. Native queue lifecycle evidence is durable in `merge_queue_entry_id`, `merge_queue_enqueued_at`, `merge_group_sha`, `merge_queue_ejected_at`, and `merge_queue_ejection_reason`. `qd merge --via-pr` uses that identity to directly merge or enqueue according to branch policy. `qd queue sync` records GitHub's eventual merge commit or returns an ejected node to `fixing`. `qd merge --use-existing-commit <sha>` remains ledger-only for integrations performed elsewhere.
 
 ## Assignments
 
@@ -233,6 +233,7 @@ Minimal audit report:
 - `fixing`: P0/P1 finding resolution is in progress.
 - `ci`: full CI gate is running or expected next.
 - `mergeable`: latest CI gate passed and qd can record merge after final checks.
+- `queued`: GitHub accepted asynchronous merge-queue ownership; qd is waiting to reconcile merge or ejection.
 - `done`: qd has recorded the node as merged/done.
 - `regressed`: previously completed or assumed-good work was reopened by a later audit or regression.
 - `blocked`: blocked by failed check/CI or unresolved project state.

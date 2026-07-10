@@ -61,6 +61,7 @@ describe("CLI contracts", () => {
       "fixing",
       "ci",
       "mergeable",
+      "queued",
       "done",
       "regressed",
       "blocked",

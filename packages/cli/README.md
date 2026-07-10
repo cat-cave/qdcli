@@ -2,7 +2,7 @@
 
 Quick DAG is a thin CLI for orchestrator-led agentic project work. It stores a repo-local DAG of executable spec nodes, dependency edges, audit findings, lifecycle runs, CI state, and merge state.
 
-qd does not run agents or decide where subagents execute. The intended model is one central orchestrator agent keeping the DAG accurate, selecting ready nodes, and delegating implementation or audit work to subagents in worktrees, remote machines, or whatever execution setup fits the project. qd stays simple: dependencies must be respected, specs must be completed, audits must happen, P0/P1 findings must be resolved, P2/P3 findings must enter the DAG, and CI must pass before merge.
+qd does not run agents or decide where subagents execute. The intended model is one central orchestrator agent keeping the DAG accurate, selecting ready nodes, and delegating implementation or audit work to many subagents in simultaneous worktrees. qd links each node to its PR, derives required checks from GitHub branch rules, monitors PR-head and merge-group state, admits bounded batches to a native merge queue, reconciles asynchronous merges/ejections, and produces deterministic failure cohorts for bisection. Dependencies, evidence, audits, findings, verification, and CI remain mandatory at speed.
 
 ## Install
 

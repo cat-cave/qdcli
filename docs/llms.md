@@ -310,7 +310,7 @@ qd merge <node> --via-pr
 qd merge <node> --use-existing-commit <sha>
 ```
 
-Lifecycle shortcuts are only safe when they record the same evidence-backed state as the explicit commands. Add `--merge --use-existing-commit <sha>` to `qd advance` only after an external repository merge. Prefer `qd merge --via-pr` when qd has a linked GitHub PR; it verifies checks and drift, performs the protected merge, and records GitHub's commit SHA.
+Lifecycle shortcuts are only safe when they record the same evidence-backed state as the explicit commands. Add `--merge --use-existing-commit <sha>` to `qd advance` only after an external repository merge. Prefer `qd merge --via-pr` when qd has a linked GitHub PR; it verifies branch-policy-required checks and either merges directly or records asynchronous queue entry.
 
 `qd ci run` runs the configured `ci_command`, streams output, writes a log under `.qd/logs/`, records pass/fail, and moves the node to `mergeable` or `blocked`.
 
@@ -321,14 +321,16 @@ Do not record an external CI pass unless the full trusted gate already completed
 When a supported provider adapter is configured, use qd to wait for external CI instead of hand-written polling:
 
 ```sh
-qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
+qd config set ci-provider github --repo owner/name --auth gh-cli
 qd ci status <node>
 qd ci watch <node>
 qd monitor
 qd sync-prs
+qd queue enqueue --all-ready --limit 8 --concurrency 4
+qd queue drain
 ```
 
-The GitHub adapter shells out to `gh`. Other providers should be added as adapters, not as assumptions baked into the DAG model. If no adapter exists, use explicit evidence with `qd ci record-pass` or run the trusted command through `qd ci run`.
+The GitHub adapter shells out to `gh` and reads required contexts plus merge-queue activation from applied branch rules. Other providers should be added as adapters, not as assumptions baked into the DAG model. If no adapter exists, use explicit evidence with `qd ci record-pass` or run the trusted command through `qd ci run`.
 
 For manual verification gates declared on a node, record the signoff:
 
@@ -351,7 +353,7 @@ It imports findings, fails on open P0/P1 findings, and promotes P2/P3 findings w
 - node is `mergeable`
 - latest CI run passed, when `require_ci_before_merge = true`
 
-For linked GitHub PRs, use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` so required checks are observed rather than asserted and stale branches remain visible. Drain green, audited, current PRs with `qd ready --mergeable` and `qd merge <node> --via-pr`. In direct-to-main or other external workflows, run `qd merge <node> --use-existing-commit <sha>` after the real integration. Keep main green; do not use qd to excuse a known-bad merge.
+For linked GitHub PRs, use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` so required checks are observed rather than asserted. A native queue owns speculative freshness, so do not manually rebase queued PRs. Select a bounded green wave with `qd ready --mergeable`, enqueue with `qd queue enqueue --all-ready --limit <n> --concurrency <n>`, and reconcile with `qd queue drain`. An ejected cohort returns to `fixing`; use `qd queue bisect <node>` to isolate a merge-group regression in deterministic point-balanced halves. In direct-to-main or other external workflows, run `qd merge <node> --use-existing-commit <sha>` after the real integration. Keep main green; do not use qd to excuse a known-bad merge.
 
 ## Inspect Progress
 

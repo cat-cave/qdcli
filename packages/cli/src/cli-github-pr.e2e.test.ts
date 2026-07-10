@@ -1,5 +1,3 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   expectQdFailure,
@@ -8,8 +6,8 @@ import {
   qdJson,
   qdJsonAllowExit,
   qdRaw,
-  root,
 } from "./cli-e2e-fixtures.js";
+import { installFakeGh, setupGithubNode } from "./github-pr-e2e-fixtures.js";
 
 installCliFixture();
 
@@ -229,16 +227,16 @@ describe("qd GitHub PR integration", () => {
     }
   });
 
-  it("falls back to all checks, preserves queued state, and validates watch timing", async () => {
+  it("preserves queued required-check state and validates watch timing", async () => {
     const previousPath = process.env.PATH;
     try {
-      await installFakeGh({ requiredEmpty: true, checkBucket: "pending", checkState: "QUEUED" });
+      await installFakeGh({ checkBucket: "pending", checkState: "QUEUED" });
       await setupGithubNode("queued-checks");
       const status = await qdJsonAllowExit("ci", "status", "queued-checks", "--json");
       expect(status.exitCode).toBe(8);
       expect(status.json).toMatchObject({
         ok: false,
-        requiredChecksOnly: false,
+        requiredChecksOnly: true,
         checkState: "queued",
         glyph: "⧗",
       });
@@ -312,105 +310,4 @@ describe("qd GitHub PR integration", () => {
       process.env.PATH = previousPath;
     }
   });
-
-  it("returns clean empty dashboards when no nodes are in flight", async () => {
-    const previousPath = process.env.PATH;
-    try {
-      await installFakeGh();
-      await qd("setup", "--no-hooks");
-      await qd("method", "acknowledge", "--agent", "test");
-      expect(await qdJson("monitor", "--json")).toEqual({ ok: true, nodes: [] });
-      expect(await qdJson("sync-prs", "--json")).toEqual({ ok: true, nodes: [] });
-      expect(await qdJson("ready", "--mergeable", "--json")).toEqual([]);
-    } finally {
-      process.env.PATH = previousPath;
-    }
-  });
 });
-
-async function setupGithubNode(id: string): Promise<void> {
-  await qd("setup", "--no-hooks");
-  await qd("method", "acknowledge", "--agent", "test");
-  await qd(
-    "config",
-    "set",
-    "ci-provider",
-    "github",
-    "--repo",
-    "owner/repo",
-    "--workflow",
-    "ci.yml",
-    "--auth",
-    "gh-cli",
-  );
-  await qd("config", "set", "policy_require_audit_before_ci", "false");
-  await qd("config", "set", "policy_require_verification_before_ci", "false");
-  await qd(
-    "node",
-    "add",
-    "--id",
-    id,
-    "--title",
-    id,
-    "--spec",
-    "Observe aggregate GitHub PR state.",
-    "--acceptance",
-    "The observed state controls the ledger.",
-  );
-  await qd("claim", id, "--agent", "worker", "--branch", "spec/pr-node");
-}
-
-async function installFakeGh(
-  options: {
-    behind?: number;
-    checkBucket?: "pass" | "fail" | "pending";
-    checkState?: string;
-    requiredEmpty?: boolean;
-    failView?: boolean;
-  } = {},
-): Promise<void> {
-  const bin = path.join(root, "fake-bin");
-  const mergedMarker = path.join(root, "pr-merged");
-  await mkdir(bin, { recursive: true });
-  const script = `#!/usr/bin/env bash
-set -eu
-if [ "$1 $2" = "pr view" ]; then
-  ${options.failView ? "printf 'PR unavailable\\n' >&2; exit 1" : ""}
-  if [ -f "${mergedMarker}" ]; then
-    state=MERGED
-    merged_at='"2026-07-10T12:00:00Z"'
-    merge_commit='{"oid":"def5678"}'
-  else
-    state=OPEN
-    merged_at=null
-    merge_commit=null
-  fi
-  printf '{"number":17,"url":"https://github.com/owner/repo/pull/17","headRefName":"spec/pr-node","headRefOid":"abc1234","baseRefName":"main","baseRefOid":"base123","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isDraft":false,"state":"%s","mergedAt":%s,"mergeCommit":%s}\n' "$state" "$merged_at" "$merge_commit"
-  exit 0
-fi
-if [ "$1 $2" = "pr checks" ]; then
-  if ${options.requiredEmpty ? "true" : "false"}; then
-    for arg in "$@"; do if [ "$arg" = "--required" ]; then printf '[]\n'; exit 0; fi; done
-  fi
-  printf '[{"bucket":"${options.checkBucket ?? "pass"}","name":"ci","state":"${options.checkState ?? "SUCCESS"}","link":"https://example.test/ci","workflow":"CI"},{"bucket":"${options.checkBucket ?? "pass"}","name":"alpha-proof","state":"${options.checkState ?? "SUCCESS"}","link":"https://example.test/proof","workflow":"Proof"}]\n'
-  exit 0
-fi
-if [ "$1" = "api" ]; then
-  printf '${options.behind ?? 0}\n'
-  exit 0
-fi
-if [ "$1 $2" = "pr merge" ]; then
-  touch "${mergedMarker}"
-  exit 0
-fi
-if [ "$1 $2" = "pr update-branch" ]; then
-  exit 0
-fi
-printf 'unexpected fake gh invocation: %s\n' "$*" >&2
-exit 2
-`;
-  const executable = path.join(bin, "gh");
-  await writeFile(executable, script, "utf8");
-  await chmod(executable, 0o755);
-  process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
-}

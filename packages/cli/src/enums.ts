@@ -29,6 +29,7 @@ export const NODE_STATUSES = [
   "fixing",
   "ci",
   "mergeable",
+  "queued",
   "done",
   "regressed",
   "blocked",

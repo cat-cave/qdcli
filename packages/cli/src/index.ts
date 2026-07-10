@@ -103,6 +103,8 @@ import { methodCommand, requireMethodAcknowledged } from "./method.js";
 import { requiresMethodAcknowledgement } from "./command-gates.js";
 import { reconcileCommand } from "./reconcile.js";
 import * as githubCommands from "./github-ci-commands.js";
+import { githubMergePolicyReport } from "./github-pr-policy.js";
+import { queueCommand } from "./github-queue-commands.js";
 import { planCommand } from "./plan-command.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
@@ -246,6 +248,8 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       return githubCommands.runMonitor(root, args.options, json);
     case "sync-prs":
       return githubCommands.syncPullRequestsCommand(root, args.options, json);
+    case "queue":
+      return queueCommand(root, action, extra, args.options, json);
     case "check":
       return checkCommand(root, action, extra, args.options, json);
     case "verification":
@@ -308,7 +312,11 @@ async function policyCommand(
     throw new Error(`Unknown policy action: ${action}`);
   }
   const phase = strictEnumOpt(options.phase, isPolicyPhase, "--phase", "ci");
-  const result = await policyReport(root, requiredArg(nodeId, "node id"), phase);
+  const id = requiredArg(nodeId, "node id");
+  const result =
+    phase === "merge"
+      ? await githubMergePolicyReport(root, id, { repo: stringOpt(options.repo) })
+      : await policyReport(root, id, phase);
   output(result, json);
   if (!result.ok) process.exitCode = 1;
 }

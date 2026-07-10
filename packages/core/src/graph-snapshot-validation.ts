@@ -3,7 +3,7 @@ import { SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS } from "./types.js";
 import type { GraphSnapshot, QdEdge, RegistryEntry } from "./types.js";
 
 export function validateGraphSnapshotForWrite(snapshot: GraphSnapshot): void {
-  if (!SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS.includes(snapshot.schema_version as 1 | 2)) {
+  if (!SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS.includes(snapshot.schema_version as 1 | 2 | 3)) {
     throw new Error(`Unsupported qd export schema_version: ${snapshot.schema_version}`);
   }
   const groups = uniqueRegistrySet(snapshot.registries.groups, "group");

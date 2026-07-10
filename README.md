@@ -87,7 +87,16 @@ See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, d
 
 For a repo that already commits a qd export, restore the local cache with `qd sync --from roadmap/spec-dag.json --dry-run --json` and then `qd sync --from roadmap/spec-dag.json`.
 
-For GitHub-backed work, link the PR at claim time (`qd claim <node> --pr <number-or-url>`) or later with `qd node set-pr`. `qd ci status|watch`, `qd monitor`, and `qd sync-prs` aggregate required PR checks and expose stale-base drift. Once mergeable, `qd merge <node> --via-pr` performs the protected `gh pr merge` and records its resulting commit. `--use-existing-commit` remains the ledger-only path for externally integrated work.
+For GitHub-backed work, link the PR at claim time (`qd claim <node> --pr <number-or-url>`) or later with `qd node set-pr`; qd can also resolve it from the claimed branch. `qd ci status|watch`, `qd monitor`, and `qd sync-prs` read required checks from branch rules and separately report PR-head and merge-group state. With a native merge queue, `qd merge <node> --via-pr` enqueues asynchronously, `qd queue drain` reconciles GitHub's eventual merge SHA, and an ejected PR returns to `fixing` with its failing checks. `--use-existing-commit` remains the ledger-only path for externally integrated work.
+
+For a parallel wave, a central orchestrator can enqueue bounded work and diagnose a failed speculative group without serial polling:
+
+```sh
+qd queue enqueue --all-ready --limit 8 --concurrency 4
+qd monitor
+qd queue drain --timeout 3600
+qd queue bisect <ejected-node>
+```
 
 For work already integrated into the current `HEAD`, use the evidence-preserving one-call path instead of replaying lifecycle commands:
 

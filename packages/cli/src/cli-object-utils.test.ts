@@ -117,7 +117,7 @@ describe("object utility contracts", () => {
   it("recognizes canonical snapshots and formats unknown values", () => {
     expect(canonicalSnapshotFrom({})).toBeUndefined();
     expect(canonicalSnapshotFrom(null)).toBeUndefined();
-    expect(() => canonicalSnapshotFrom({ schema_version: 3 })).toThrow(/Unsupported/);
+    expect(() => canonicalSnapshotFrom({ schema_version: 4 })).toThrow(/Unsupported/);
     expect(() => canonicalSnapshotFrom({ schema_version: 1, registries: [] })).toThrow(
       /registries/,
     );
@@ -134,7 +134,7 @@ describe("object utility contracts", () => {
       runs: [],
       node_notes: [],
     });
-    expect(snapshot).toMatchObject({ schema_version: 2, assignments: [], waves: [] });
+    expect(snapshot).toMatchObject({ schema_version: 3, assignments: [], waves: [] });
     const oldSnapshot = canonicalSnapshotFrom({
       schema_version: 1,
       exported_at: "2026-06-28T00:00:00.000Z",

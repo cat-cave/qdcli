@@ -61,6 +61,11 @@ export function nodeFromInput(input: AddNodeInput, id: string, now: string): QdN
     branch: null,
     pr_number: null,
     pr_url: null,
+    merge_queue_entry_id: null,
+    merge_queue_enqueued_at: null,
+    merge_group_sha: null,
+    merge_queue_ejected_at: null,
+    merge_queue_ejection_reason: null,
     spec: input.spec,
     acceptance: input.acceptance,
     validation: input.validation ?? null,
@@ -86,8 +91,10 @@ export async function insertNode(db: Database, node: QdNode): Promise<void> {
     `insert into nodes (
       id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
       spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, ci_command,
-      blocked_by, blocked_reason, blocked_owner, pr_number, pr_url, created_at, updated_at, claimed_at, done_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      blocked_by, blocked_reason, blocked_owner, pr_number, pr_url,
+      merge_queue_entry_id, merge_queue_enqueued_at, merge_group_sha, merge_queue_ejected_at, merge_queue_ejection_reason,
+      created_at, updated_at, claimed_at, done_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       node.id,
       node.title,
@@ -115,6 +122,11 @@ export async function insertNode(db: Database, node: QdNode): Promise<void> {
       node.blocked_owner,
       node.pr_number,
       node.pr_url,
+      node.merge_queue_entry_id,
+      node.merge_queue_enqueued_at,
+      node.merge_group_sha,
+      node.merge_queue_ejected_at,
+      node.merge_queue_ejection_reason,
       node.created_at,
       node.updated_at,
       node.claimed_at,

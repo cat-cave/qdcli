@@ -8,6 +8,7 @@ export type NodeStatus =
   | "fixing"
   | "ci"
   | "mergeable"
+  | "queued"
   | "done"
   | "regressed"
   | "blocked"
@@ -43,8 +44,8 @@ export type NoteKind =
   | "risk-acceptance"
   | "migration-note";
 
-export const QD_EXPORT_SCHEMA_VERSION = 2;
-export const SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS = [1, QD_EXPORT_SCHEMA_VERSION] as const;
+export const QD_EXPORT_SCHEMA_VERSION = 3;
+export const SUPPORTED_QD_EXPORT_SCHEMA_VERSIONS = [1, 2, QD_EXPORT_SCHEMA_VERSION] as const;
 
 export interface VerificationEntry {
   type: VerificationType;
@@ -66,6 +67,11 @@ export interface QdNode {
   branch: string | null;
   pr_number?: number | null;
   pr_url?: string | null;
+  merge_queue_entry_id?: string | null;
+  merge_queue_enqueued_at?: string | null;
+  merge_group_sha?: string | null;
+  merge_queue_ejected_at?: string | null;
+  merge_queue_ejection_reason?: string | null;
   spec: string;
   acceptance: string;
   validation: string | null;
@@ -248,7 +254,12 @@ export interface PolicyViolation {
     | "verificationRequired"
     | "followupDispositionRequired"
     | "ciRequired"
-    | "mergeCommitRequired";
+    | "mergeCommitRequired"
+    | "not-enqueued"
+    | "queued"
+    | "ejected-from-queue"
+    | "merge-group-check-failed"
+    | "queue-required-check-missing";
   message: string;
   node_id: string;
   phase: PolicyPhase;

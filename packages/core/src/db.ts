@@ -94,6 +94,7 @@ ci_repo = ""
 ci_workflow = ""
 ci_auth = "gh-cli"
 merge_strategy = "squash"
+merge_queue_mode = "auto"
 require_clean_worktree = true
 clean_worktree_except = [".qd/"]
 require_gate_before_ci = true
