@@ -303,26 +303,29 @@ Normal path:
 qd gate <node> --phase ci --json
 qd check run <node>
 qd ci run <node>
-# perform the repository's real merge, then record it
+# linked GitHub PR path
+qd ci status <node>
+qd merge <node> --via-pr
+# external integration path
 qd merge <node> --use-existing-commit <sha>
 ```
 
-Lifecycle shortcuts are only safe when they record the same evidence-backed state
-as the explicit commands. Add `--merge --use-existing-commit <sha>` only after
-the real repository merge has happened and it is correct to record qd's merge
-state. qd still does not perform the real git or GitHub merge.
+Lifecycle shortcuts are only safe when they record the same evidence-backed state as the explicit commands. Add `--merge --use-existing-commit <sha>` to `qd advance` only after an external repository merge. Prefer `qd merge --via-pr` when qd has a linked GitHub PR; it verifies checks and drift, performs the protected merge, and records GitHub's commit SHA.
 
 `qd ci run` runs the configured `ci_command`, streams output, writes a log under `.qd/logs/`, records pass/fail, and moves the node to `mergeable` or `blocked`.
 
 `qd check run` runs the configured `check_command` or the node's `check_command` override. `qd ci run` uses the node's `ci_command` override when present, otherwise the configured `ci_command`. Checks record a run and log, but only CI marks a node mergeable.
 
-Do not record an external CI pass unless the full trusted gate already completed outside qd. Use `qd ci record-pass <node> --summary "..." --url <ci-url>` or another evidence flag.
+Do not record an external CI pass unless the full trusted gate already completed outside qd. In GitHub mode, `qd ci record-pass --provider github` verifies the linked PR's required checks through `gh` and rejects asserted passes. For non-GitHub providers, attach explicit evidence with `--url`, `--log-path`, or `--external-id`.
 
 When a supported provider adapter is configured, use qd to wait for external CI instead of hand-written polling:
 
 ```sh
 qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
-qd ci poll <node> --sha <commit>
+qd ci status <node>
+qd ci watch <node>
+qd monitor
+qd sync-prs
 ```
 
 The GitHub adapter shells out to `gh`. Other providers should be added as adapters, not as assumptions baked into the DAG model. If no adapter exists, use explicit evidence with `qd ci record-pass` or run the trusted command through `qd ci run`.
@@ -330,7 +333,8 @@ The GitHub adapter shells out to `gh`. Other providers should be added as adapte
 For manual verification gates declared on a node, record the signoff:
 
 ```sh
-qd verification sign-off <node> --type manual --note "<what was checked>" --evidence <path-or-url>
+qd verification list <node> --json
+qd verification sign-off <node> --index <n> --note "<what was checked>" --evidence <path-or-url>
 ```
 
 For clean structured audits, prefer the composite:
@@ -347,7 +351,7 @@ It imports findings, fails on open P0/P1 findings, and promotes P2/P3 findings w
 - node is `mergeable`
 - latest CI run passed, when `require_ci_before_merge = true`
 
-`qd merge` does not perform a git merge, squash, rebase, push, or GitHub PR operation. The orchestrator should use the repo's normal merge workflow for git state, and use `qd merge` to record that the node cleared qd's gate. In direct-to-main workflows, run `qd merge <node> --use-existing-commit <sha>` after the real merge so qd can record the commit it represents. Keep main green; do not use qd to excuse a known-bad merge.
+For linked GitHub PRs, use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` so required checks are observed rather than asserted and stale branches remain visible. Drain green, audited, current PRs with `qd ready --mergeable` and `qd merge <node> --via-pr`. In direct-to-main or other external workflows, run `qd merge <node> --use-existing-commit <sha>` after the real integration. Keep main green; do not use qd to excuse a known-bad merge.
 
 ## Inspect Progress
 

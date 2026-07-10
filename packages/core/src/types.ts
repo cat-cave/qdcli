@@ -64,6 +64,8 @@ export interface QdNode {
   risk: Risk;
   owner: string | null;
   branch: string | null;
+  pr_number?: number | null;
+  pr_url?: string | null;
   spec: string;
   acceptance: string;
   validation: string | null;

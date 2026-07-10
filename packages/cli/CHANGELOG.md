@@ -1,5 +1,21 @@
 # @cat-cave/qdcli
 
+## 0.3.0
+
+### Minor Changes
+
+- Ship qd 0.3.0 as a reliability, reconciliation, and GitHub PR workflow release.
+
+  - Make deterministic exports write the canonical roadmap file by default, add explicit stdout, compact/projection output, clear import replacement semantics, and honest ledger-only merge messaging.
+  - Add strict indexed and report-backed verification, node-specific doctor diagnostics, parse-safe JSON around noisy checks, coherent concurrent reads, lock retries, and structured CI/merge evidence.
+  - Add atomic `qd reconcile` for already-integrated commits with completion, independent audit, exact verification, CI, git ancestry, and idempotence checks.
+  - Add first-class PR linkage, aggregate required-check status/watch/monitoring, verified GitHub CI passes, automatic PR-to-ledger synchronization, stale-base detection/rebase, a merge queue view, and protected `qd merge --via-pr` integration through `gh`.
+
+### Patch Changes
+
+- Updated dependencies
+  - @cat-cave/qdcli-core@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes

@@ -41,6 +41,7 @@ Use qd templates instead of inventing report JSON:
 ```sh
 qd template completion-report > /tmp/completion-report.json
 qd template audit-report > /tmp/audit-report.json
+qd template reconciliation-report > /tmp/reconciliation-report.json
 qd template blocker-report > /tmp/blocker-report.json
 ```
 
@@ -74,8 +75,10 @@ qd sync --from roadmap/spec-dag.json --expect-clean --json
 7. Start independent audit. Use `qd prompt audit <node>`; auditors inspect diff, acceptance, and evidence.
 8. Missing required evidence, unreachable required API/provider/environment, or unverified acceptance is P1 unless the spec explicitly excludes that surface.
 9. Resolve P0/P1 findings before check/CI. Promote or dispose P2/P3 findings before merge.
-10. Run `qd gate <node> --phase ci --json`, `qd check run <node>`, then `qd ci run <node>` or `qd ci poll <node>`.
-11. Perform the real repository merge through the repo workflow, then record `qd merge <node> --use-existing-commit <sha>`.
+10. Run `qd gate <node> --phase ci --json`, `qd check run <node>`, then `qd ci run <node>` or GitHub-aware `qd ci status|watch <node>` and `qd sync-prs`. Use `qd monitor` for parallel PR waves.
+11. For a linked GitHub PR, use `qd merge <node> --via-pr`; otherwise perform the real repository merge and record `qd merge <node> --use-existing-commit <sha>`. If the commit is already integrated but its lifecycle evidence is not recorded, use `qd reconcile <node> --commit <sha> --from-report <reconciliation-report.json>`.
+
+Use `qd doctor <node> --json` when a review or mergeable node does not advance. It reports the exact missing audit, verification index, CI evidence, finding disposition, or merge record.
 
 Never bypass the ready queue. If the graph is wrong, fix the graph.
 

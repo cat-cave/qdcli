@@ -233,8 +233,8 @@ qd sync --from roadmap/spec-dag.json --expect-clean --json
 7. Start independent audit. Use \`qd prompt audit <node>\`; auditors inspect diff, acceptance, and evidence.
 8. Missing required evidence, unreachable required API/provider/environment, or unverified acceptance is P1 unless the spec explicitly excludes that surface.
 9. Resolve P0/P1 findings before check/CI. Promote or dispose P2/P3 findings before merge.
-10. Run \`qd gate <node> --phase ci --json\`, \`qd check run <node>\`, then \`qd ci run <node>\` or \`qd ci poll <node>\`.
-11. Perform the real repository merge through the repo workflow, then record \`qd merge <node> --use-existing-commit <sha>\`.
+10. Run \`qd gate <node> --phase ci --json\`, \`qd check run <node>\`, then \`qd ci run <node>\` or GitHub-aware \`qd ci status|watch <node>\` and \`qd sync-prs\`.
+11. For linked GitHub PRs, use \`qd merge <node> --via-pr\`; otherwise perform the real repository merge and record \`qd merge <node> --use-existing-commit <sha>\`.
 
 Never bypass the ready queue. If the graph is wrong, fix the graph.
 

@@ -333,6 +333,8 @@ describe("import mapping and CI helper contracts", () => {
     expect(ciEvidence({ url: "https://ci.test/run", "external-id": "run-1" })).toEqual({
       summary: "Evidence: url=https://ci.test/run, external_id=run-1",
       logPath: undefined,
+      url: "https://ci.test/run",
+      externalId: "run-1",
     });
 
     const root = await mkdtemp(path.join(os.tmpdir(), "qdcli-ci-contracts-"));

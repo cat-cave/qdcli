@@ -21,7 +21,7 @@ export async function runConfiguredCheck(
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
-  const result = await executeConfiguredCheck(root, nodeId, kind, options);
+  const result = await executeConfiguredCheck(root, nodeId, kind, options, !json);
   output(result, json);
   if (!result.ok) process.exitCode = result.exitCode;
 }
@@ -31,6 +31,7 @@ export async function executeConfiguredCheck(
   nodeId: string,
   kind: "check" | "ci",
   options: Record<string, string | string[] | boolean>,
+  streamOutput = true,
 ): Promise<{
   ok: boolean;
   exitCode: number;
@@ -71,12 +72,10 @@ export async function executeConfiguredCheck(
     paths.logsDir,
     `${kind}-${nodeId}-${startedAt.replace(/[:.]/g, "-")}.log`,
   );
-  const execution = await runShellCommand(
-    command,
-    root,
-    logPath,
-    timeoutOptionsForCheck(kind, config),
-  );
+  const execution = await runShellCommand(command, root, logPath, {
+    ...timeoutOptionsForCheck(kind, config),
+    streamOutput,
+  });
   if (shouldRunHook(options, config.hooks.postCheck)) {
     await runPolicyHook(root, config.hooks.postCheck, {
       root,

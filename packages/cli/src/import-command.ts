@@ -44,7 +44,16 @@ export async function importCommand(
   const dryRun = Boolean(options["dry-run"]);
   const verbose = Boolean(options.verbose);
   const allowDefaults = Boolean(options["allow-defaults"]);
-  const merge = Boolean(options.merge);
+  if (options.merge && options.replace) {
+    throw new Error("Use either deprecated --merge or --replace, not both");
+  }
+  const deprecatedMerge = Boolean(options.merge);
+  const replace = Boolean(options.replace) || deprecatedMerge;
+  if (deprecatedMerge && !json) {
+    console.error(
+      "Warning: qd import --merge is deprecated; use --replace for authoritative replacement.",
+    );
+  }
   if (adapter && mappingPath) {
     throw new Error("qd import --adapter cannot be combined with --schema-mapping");
   }
@@ -68,9 +77,17 @@ export async function importCommand(
       importedFindings: dryRun ? 0 : canonicalSnapshot.findings.length,
       importedRuns: dryRun ? 0 : canonicalSnapshot.runs.length,
       importedNodeNotes: dryRun ? 0 : canonicalSnapshot.node_notes.length,
+      action: dryRun
+        ? replace
+          ? "would-replace-local-cache"
+          : "would-restore-empty-cache"
+        : replace
+          ? "replaced-local-cache"
+          : "restored-empty-cache",
+      deprecatedMerge,
     };
     if (!dryRun) {
-      if (merge) await replaceGraphSnapshot(root, canonicalSnapshot);
+      if (replace) await replaceGraphSnapshot(root, canonicalSnapshot);
       else await restoreGraphSnapshot(root, canonicalSnapshot);
     }
     return output(report, json);
@@ -88,12 +105,16 @@ export async function importCommand(
   planEdges(edges, mapping, plannedImportEdges, report, plannedEdges);
   planNodeEdges(plannedNodes, mapping, plannedImportEdges, report, plannedEdges);
   validateImportPlan(plannedNodes, plannedImportEdges, report);
-  await enforceImportWritePreconditions(root, report, { dryRun, allowDefaults, merge });
+  await enforceImportWritePreconditions(root, report, {
+    dryRun,
+    allowDefaults,
+    merge: replace,
+  });
 
   const importedNodes = [];
   const importedEdges = [];
   if (report.errors.length === 0 && !dryRun) {
-    if (merge) {
+    if (replace) {
       const snapshot = snapshotFromImportPlan(plannedNodes, plannedImportEdges);
       await replaceGraphSnapshot(root, snapshot);
       importedNodes.push(...snapshot.nodes);
@@ -115,7 +136,20 @@ export async function importCommand(
   report.importedNodes = importedNodes.length;
   report.importedEdges = importedEdges.length;
   report.ok = report.errors.length === 0;
-  output(report, json);
+  output(
+    {
+      ...report,
+      action: dryRun
+        ? replace
+          ? "would-replace-local-cache"
+          : "would-import-into-empty-cache"
+        : replace
+          ? "replaced-local-cache"
+          : "imported-into-empty-cache",
+      deprecatedMerge,
+    },
+    json,
+  );
   if (!report.ok) process.exitCode = 1;
 }
 

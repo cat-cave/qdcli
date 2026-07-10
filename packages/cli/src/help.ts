@@ -30,11 +30,14 @@ Core:
   qd migrate
   qd setup [--no-hooks] [--print-agent-url]
   qd method show|status|acknowledge [--agent <name>]
-  qd doctor [--strict] [--json]
-  qd status [--json]
+  qd doctor [node] [--strict] [--json]
+  qd status [--json] [--fields nodes,ready,blocked]
   qd stats [--json] [--window 7] [--milestone <name>]
   qd snapshot [--json] [--milestone <name>]
-  qd ready [--json]
+  qd ready [--json] [--fields id,title,priority,status] [--compact|--tsv|--full]
+  qd ready --mergeable [--json]
+  qd monitor [--json]
+  qd sync-prs [--rebase] [--json]
   qd graph --format table|json|mermaid|dot
   qd velocity [--window 7]
   qd critical-path [--milestone <name>]
@@ -48,9 +51,9 @@ Core:
   qd config get ci-command
   qd config set check-command "<fast project check command>"
   qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-cli
-  qd export [--out roadmap/spec-dag.json] [--deterministic]
+  qd export [--out <path>|-] [--deterministic]  # defaults to roadmap/spec-dag.json
   qd export --status ready,claimed,review --milestone alpha [--json]
-  qd import --from roadmap/spec-dag.json [--schema-mapping qd-import-map.json] [--dry-run] [--verbose] [--merge]
+  qd import --from <source> [--schema-mapping qd-import-map.json] [--dry-run] [--verbose] [--replace]
   qd sync --from roadmap/spec-dag.json [--dry-run] [--expect-clean] [--write-diff sync-diff.json]
   qd import --from docs/ROADMAP.html --adapter roadmap-html [--dry-run]
   qd import --from roadmap.md --adapter markdown-checklist [--dry-run]
@@ -62,7 +65,8 @@ Graph:
   qd node add --title <text> --spec-file <path> --acceptance-file <path>
   qd nodes add-bulk --from-json <plan.json>
   qd node list|show|edit|cancel|note
-  qd node show <id> --full
+  qd node set-pr <node> <number-or-url>
+  qd node show <id> [--summary|--fields id,status,title|--full]
   qd node edit <id> --from-json <patch.json>
   qd node edit <id> --spec-file <path> --acceptance-file <path>
   qd block <id> --type environment|credential|provider|data|manual|policy|external-dependency --reason <text> --owner <name> --needed <text> --evidence <path-or-proof>
@@ -72,9 +76,10 @@ Graph:
   qd project register --name <name>
   qd milestone register --name <name> --rank <n>
   qd edge add <from> <to> [--type requires]
-  qd claim [node] --agent <name> [--branch <branch>]
+  qd claim [node] --agent <name> [--branch <branch>] [--pr <number-or-url>]
   qd complete <node> --from-report <completion-report.json>
   qd advance <node> --from-report <completion-report.json> [--merge --use-existing-commit <sha>]
+  qd reconcile <node> --commit <sha> --from-report <reconciliation.json>
   qd diff <node> [--base main] [--self-only] [--working] [--tool git|sem|inspect] [--format markdown|json|plain]
   qd worktree create <node> [--branch spec/<node>] [--path <path>] [--env-template .env.example] [--env KEY=value]
   qd worktree env <node> [--env-template .env.example] [--env KEY=value]
@@ -89,11 +94,14 @@ Audit:
   qd gate <node> [--phase ci|merge]
   qd check run <node>
   qd ci run <node>
+  qd ci status <node>|--all
+  qd ci watch <node> [--interval 10] [--timeout 1800]
   qd ci poll <node> [--sha <commit>] [--provider github] [--repo owner/name] [--workflow ci.yml]
   qd ci record-pass <node> --summary <text> (--log-path <path>|--url <url>|--external-id <id>)
-  qd verification sign-off <node> --type manual --note <text> [--evidence <path>]
+  qd verification sign-off <node> --index <n> --note <text> [--evidence <path>]
+  qd verification sign-off <node> --all --from-report <verification-signoff.json>
   qd audit pass <node> --from-report <audit-report.json>
-  qd merge <node> --use-existing-commit <sha>
+  qd merge <node> (--via-pr|--use-existing-commit <sha>)
 
 Viewer:
   qd view [--host 127.0.0.1] [--port 5173] [--open] [--json]
@@ -108,26 +116,38 @@ export function commandHelp(group: string, action?: string): string {
     method:
       "qd method show|status|acknowledge [--agent <name>] [--json]\nShows qd's strict method, records local acknowledgement, and gates mutation commands until the active method hash is acknowledged.",
     template:
-      "qd template <completion-report|audit-report|blocker-report|unblock-report|research-report|reality-check|spec|milestone|finding>\nPrints a valid JSON starting point for agent-authored qd contracts.",
+      "qd template <completion-report|audit-report|reconciliation-report|verification-signoff-report|blocker-report|unblock-report|research-report|reality-check|spec|milestone|finding>\nPrints a valid JSON starting point for agent-authored qd contracts.",
     schema:
       "qd schema list|print|example <name>\nPrints strict JSON schemas or copyable examples for qd contracts.",
     init: "qd init [--json]\nInitializes .qd, config, logs, and applies current DB migrations.",
     migrate:
       "qd migrate [--json]\nApplies pending qd DB schema migrations in place. Run this after upgrading qd when doctor reports stale schema.",
     import:
-      "qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults] [--merge]\nImports non-qd DAGs or qd canonical exports with strict dry-run validation.",
+      "qd import --from <json> [--schema-mapping <json>] [--adapter roadmap-html|markdown-checklist] [--dry-run] [--verbose] [--allow-defaults] [--replace]\nImports into an empty DAG or explicitly replaces the local cache. Deprecated --merge aliases --replace; use qd sync for authoritative canonical qd exports.",
     sync: "qd sync --from <qd-export.json> [--dry-run] [--expect-clean] [--write-diff <json>]\nValidates and optionally replaces the local qd cache from committed qd JSON.",
     advance:
-      "qd advance <node> --from-report <completion-report.json> [--merge --use-existing-commit <sha>]\nRuns the evidence-backed lifecycle. It must not bypass audit, verification, CI, or real merge evidence.",
+      "qd advance <node> --from-report <completion-report.json> [--merge --use-existing-commit <sha>]\nRuns only currently satisfiable lifecycle steps and reports every unsatisfied gate. It never creates audit, verification, CI, or real merge evidence.",
+    reconcile:
+      "qd reconcile <node> --commit <sha> --from-report <reconciliation.json>\nAtomically reconciles an already-integrated commit from validated completion, independent audit, exact verification, and trusted CI evidence.",
+    doctor:
+      "qd doctor [node] [--strict] [--json]\nChecks project integrity, or explains every unsatisfied lifecycle gate and exact next action for one node.",
+    export:
+      "qd export [--out <path>|-] [--deterministic]\nWrites roadmap/spec-dag.json by default. Pass --out - to stream a canonical export to stdout.",
+    verification:
+      "qd verification list <node> | sign-off <node> --index <n> --note <text> [--evidence <path>] | sign-off <node> --all --from-report <json>\nLists stable 1-based verification indices and records only exact declared verification evidence.",
     check:
       "qd check run <node> [--cmd <command>] [--no-hooks]\nRuns the configured fast preflight and records a check run/log.",
     "check run":
       "qd check run <node> [--cmd <command>] [--no-hooks]\nMutates qd state with a passed or failed check run.",
-    ci: "qd ci run|poll|record-pass|fail <node>\nRecords full trusted CI evidence. Passing CI makes a node mergeable.",
+    ci: "qd ci run|status|watch|poll|record-pass|fail <node>\nGitHub status/watch aggregate all required PR checks; passing verified CI makes a node mergeable.",
     "ci run":
       "qd ci run <node> [--cmd <command>] [--no-hooks]\nRuns the configured full CI command and records log evidence.",
     merge:
-      "qd merge <node> [--strategy squash|merge|rebase] [--use-existing-commit <sha>] [--no-hooks]\nRecords qd merge state only; it does not run git merge or open a PR.",
+      "qd merge <node> [--strategy squash|merge|rebase] (--via-pr|--use-existing-commit <sha>) [--no-hooks]\n--via-pr verifies required checks and drift, runs gh pr merge with head-SHA protection, and records the resulting merge commit. Existing-commit mode remains ledger-only.",
+    monitor:
+      "qd monitor [--json]\nShows every in-flight node with PR number, aggregate required-check state, behind count, mergeability, and ledger status.",
+    "sync-prs":
+      "qd sync-prs [--rebase] [--json]\nRefreshes all in-flight PRs, records verified green CI when audit/verifications are satisfied, and optionally rebases stale PR branches.",
     audit:
       "qd audit start|pass|fail|dispose|cancel|supersede|list <node>\nTracks audit run lifecycle and findings.",
     "audit pass":
@@ -177,7 +197,7 @@ export function topicHelp(topic: string): string {
     evidence:
       "qd evidence: completion, audit, verification, CI, and merge state need artifacts such as command logs, API responses, screenshots, fixtures, CI URLs, commits, or deployment proof tied to acceptance criteria.",
     export:
-      "qd export: commit deterministic qd JSON, not .qd/qd.db. Configure [export].canonicalize_command for repo formatting hooks.",
+      "qd export: writes roadmap/spec-dag.json by default; pass --out - for stdout. Commit deterministic qd JSON, not .qd/qd.db. Configure [export].canonicalize_command for repo formatting hooks.",
     "agent-agnostic-orchestration":
       "qd never launches Codex, Claude, or any agent runtime. It records DAG state, assignments, evidence, gates, audits, findings, and exports.",
   };

@@ -59,6 +59,8 @@ export function nodeFromInput(input: AddNodeInput, id: string, now: string): QdN
     risk: input.risk ?? "medium",
     owner: null,
     branch: null,
+    pr_number: null,
+    pr_url: null,
     spec: input.spec,
     acceptance: input.acceptance,
     validation: input.validation ?? null,
@@ -84,8 +86,8 @@ export async function insertNode(db: Database, node: QdNode): Promise<void> {
     `insert into nodes (
       id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
       spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, ci_command,
-      blocked_by, blocked_reason, blocked_owner, created_at, updated_at, claimed_at, done_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      blocked_by, blocked_reason, blocked_owner, pr_number, pr_url, created_at, updated_at, claimed_at, done_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       node.id,
       node.title,
@@ -111,6 +113,8 @@ export async function insertNode(db: Database, node: QdNode): Promise<void> {
       node.blocked_by,
       node.blocked_reason,
       node.blocked_owner,
+      node.pr_number,
+      node.pr_url,
       node.created_at,
       node.updated_at,
       node.claimed_at,

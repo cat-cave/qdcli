@@ -1,4 +1,4 @@
-import { all, applyMigrations, get, openDatabase, run } from "./db.js";
+import { all, applyMigrations, get, openDatabase, run, type Database } from "./db.js";
 import {
   assertNodeQuality,
   assertNodeRegistryValues,
@@ -21,26 +21,78 @@ import { QD_EXPORT_SCHEMA_VERSION as CURRENT_EXPORT_SCHEMA_VERSION } from "./typ
 
 export async function graphSnapshot(root: string): Promise<GraphSnapshot> {
   const db = await openDatabase(root);
-  return {
-    schema_version: CURRENT_EXPORT_SCHEMA_VERSION,
-    exported_at: new Date().toISOString(),
-    registries: {
-      groups: await listRegistrySnapshot(root, "groups"),
-      projects: await listRegistrySnapshot(root, "projects"),
-      milestones: await listRegistrySnapshot(root, "milestones"),
-    },
-    nodes: (await all<NodeRow>(db, "select * from nodes order by created_at asc")).map(hydrateNode),
-    edges: await all<QdEdge>(db, "select * from edges order by created_at asc"),
-    findings: await all<QdFinding>(db, "select * from findings order by created_at asc"),
-    runs: await all<QdRun>(db, "select * from runs order by started_at asc"),
-    node_notes: await all<NodeNote>(db, "select * from node_notes order by created_at asc"),
-    assignments: await all<QdAssignment>(db, "select * from assignments order by started_at asc"),
-    waves: await all<QdWave>(db, "select * from waves order by started_at asc"),
-    wave_memberships: await all<QdWaveMembership>(
-      db,
-      "select * from wave_memberships order by created_at asc",
-    ),
-  };
+  await run(db, "begin");
+  try {
+    const snapshot = {
+      schema_version: CURRENT_EXPORT_SCHEMA_VERSION,
+      exported_at: new Date().toISOString(),
+      registries: {
+        groups: await listRegistrySnapshot(db, "groups"),
+        projects: await listRegistrySnapshot(db, "projects"),
+        milestones: await listRegistrySnapshot(db, "milestones"),
+      },
+      nodes: (await all<NodeRow>(db, "select * from nodes order by created_at asc")).map(
+        hydrateNode,
+      ),
+      edges: await all<QdEdge>(db, "select * from edges order by created_at asc"),
+      findings: await all<QdFinding>(db, "select * from findings order by created_at asc"),
+      runs: await all<QdRun>(db, "select * from runs order by started_at asc"),
+      node_notes: await all<NodeNote>(db, "select * from node_notes order by created_at asc"),
+      assignments: await all<QdAssignment>(db, "select * from assignments order by started_at asc"),
+      waves: await all<QdWave>(db, "select * from waves order by started_at asc"),
+      wave_memberships: await all<QdWaveMembership>(
+        db,
+        "select * from wave_memberships order by created_at asc",
+      ),
+    } satisfies GraphSnapshot;
+    await run(db, "commit");
+    return snapshot;
+  } catch (error) {
+    await run(db, "rollback");
+    throw error;
+  } finally {
+    await db.close();
+  }
+}
+
+export async function nodeDetailSnapshot(
+  root: string,
+  nodeId: string,
+): Promise<{
+  node: ReturnType<typeof hydrateNode>;
+  findings: QdFinding[];
+  notes: NodeNote[];
+  runs: QdRun[];
+}> {
+  const db = await openDatabase(root);
+  await run(db, "begin");
+  try {
+    const row = await get<NodeRow>(db, "select * from nodes where id = ?", [nodeId]);
+    if (!row) throw new Error(`Node not found: ${nodeId}`);
+    const result = {
+      node: hydrateNode(row),
+      findings: await all<QdFinding>(
+        db,
+        "select * from findings where node_id = ? order by created_at asc",
+        [nodeId],
+      ),
+      notes: await all<NodeNote>(
+        db,
+        "select * from node_notes where node_id = ? order by created_at asc",
+        [nodeId],
+      ),
+      runs: await all<QdRun>(db, "select * from runs where node_id = ? order by started_at asc", [
+        nodeId,
+      ]),
+    };
+    await run(db, "commit");
+    return result;
+  } catch (error) {
+    await run(db, "rollback");
+    throw error;
+  } finally {
+    await db.close();
+  }
 }
 
 export function deterministicGraphSnapshot(snapshot: GraphSnapshot): GraphSnapshot {
@@ -122,10 +174,9 @@ async function clearGraphTables(db: Awaited<ReturnType<typeof openDatabase>>): P
 }
 
 async function listRegistrySnapshot(
-  root: string,
+  db: Database,
   table: "groups" | "projects" | "milestones",
 ): Promise<RegistryEntry[]> {
-  const db = await openDatabase(root);
   const order = table === "milestones" ? "rank asc" : "name asc";
   return all<RegistryEntry>(db, `select * from ${table} order by ${order}`);
 }
@@ -167,8 +218,8 @@ async function writeNodes(
       `insert into nodes (
         id, title, kind, milestone, group_name, projects_json, status, priority, estimate_points, risk, owner, branch,
         spec, acceptance, validation, verification_json, audit_focus_json, context, status_reason, check_command, ci_command,
-        blocked_by, blocked_reason, blocked_owner, created_at, updated_at, claimed_at, done_at
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        blocked_by, blocked_reason, blocked_owner, pr_number, pr_url, created_at, updated_at, claimed_at, done_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         node.id,
         node.title,
@@ -194,6 +245,8 @@ async function writeNodes(
         node.blocked_by ?? null,
         node.blocked_reason ?? null,
         node.blocked_owner ?? null,
+        node.pr_number ?? null,
+        node.pr_url ?? null,
         node.created_at,
         node.updated_at,
         node.claimed_at,

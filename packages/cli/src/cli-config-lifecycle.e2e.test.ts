@@ -236,6 +236,8 @@ describe("qd CLI config and lifecycle surfaces", () => {
           "advance-node",
           "--summary",
           "external",
+          "--provider",
+          "external",
           "--url",
           "https://example.test/ci",
           "--json",

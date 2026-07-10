@@ -30,6 +30,7 @@ qd method show
 qd method acknowledge --agent codex
 qd template completion-report
 qd template audit-report
+qd template reconciliation-report
 ```
 
 See https://github.com/cat-cave/qdcli for full documentation.

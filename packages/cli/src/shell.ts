@@ -5,7 +5,11 @@ export function runShellCommand(
   command: string,
   cwd: string,
   logPath: string,
-  options: { timeoutSeconds?: number; noOutputTimeoutSeconds?: number } = {},
+  options: {
+    timeoutSeconds?: number;
+    noOutputTimeoutSeconds?: number;
+    streamOutput?: boolean;
+  } = {},
 ): Promise<{ exitCode: number; timedOut: boolean; noOutputTimedOut: boolean }> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -47,12 +51,12 @@ export function runShellCommand(
     };
     child.stdout.on("data", (chunk: Buffer) => {
       lastOutputAt = Date.now();
-      process.stdout.write(chunk);
+      if (options.streamOutput !== false) process.stdout.write(chunk);
       logChunk(chunk);
     });
     child.stderr.on("data", (chunk: Buffer) => {
       lastOutputAt = Date.now();
-      process.stderr.write(chunk);
+      if (options.streamOutput !== false) process.stderr.write(chunk);
       logChunk(chunk);
     });
     child.on("error", (error) => {

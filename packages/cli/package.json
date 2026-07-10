@@ -1,6 +1,6 @@
 {
   "name": "@cat-cave/qdcli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Quick DAG CLI for agent-readable project orchestration",
   "license": "MIT",
   "repository": {

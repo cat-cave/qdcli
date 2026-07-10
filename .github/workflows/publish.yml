@@ -22,6 +22,5 @@ jobs:
           package-manager-cache: false
       - uses: cachix/install-nix-action@v31.10.6
       - run: nix develop -c just install
-      - run: nix develop -c just ci
-      - run: nix develop -c just npm-smoke
+      - run: nix develop -c just release-check
       - run: nix develop -c corepack pnpm exec changeset publish --no-git-tag

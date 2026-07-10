@@ -14,7 +14,12 @@ qd node show <id> --full --json
 qd gate <id> --json
 qd finding list --open --severity P0,P1 --json
 qd promote-findings <id> --json
-qd advance <id> --summary "<summary>" --json
+qd advance <id> --from-report <completion-report.json> --json
+qd doctor <id> --json
+qd ci status <id> --json
+qd ci status --all --json
+qd monitor --json
+qd sync-prs --json
 qd diff <id> --self-only --base main --json
 qd milestone status --json
 qd velocity --json
@@ -69,7 +74,10 @@ interface QdAdvanceResult {
   ok: boolean;
   stoppedAt: string;
   nextAction: string | null;
+  nextActions: string[];
   steps: Array<{ step: string; ok: boolean; detail?: unknown }>;
   node: QdNode;
 }
 ```
+
+GitHub PR status payloads include canonical PR identity, every required check, aggregate `checkState`, `behind`, GitHub mergeability, `readyToMerge`, and a check evidence URL. All-node status/monitor payloads retain per-node errors rather than dropping an unavailable PR. `qd doctor <id>` uses stable reason codes such as `auditRequired`, `verificationRequired`, `ciRequired`, `staleBase`, and `mergeRecordRequired`.

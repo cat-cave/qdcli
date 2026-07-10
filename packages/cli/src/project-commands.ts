@@ -19,15 +19,26 @@ import {
 import { numberOpt, output, requiredArg, stringListOpt, stringOpt } from "./args.js";
 import { getConfigValue, setCiProviderConfig, setConfigValue } from "./config-options.js";
 import { parseStatusList } from "./enums.js";
-import { filterNodes, filterSnapshot, formatRows, toDot, toMermaid } from "./graph-format.js";
+import {
+  filterNodes,
+  filterSnapshot,
+  formatRows,
+  projectRecord,
+  toDot,
+  toMermaid,
+} from "./graph-format.js";
 import { runPolicyHook } from "./shell.js";
 import { isSourceCheckout, viewerRuntime } from "./viewer.js";
+import { nodeDoctorCommand } from "./node-doctor.js";
+import { githubMergeQueue } from "./github-ci-commands.js";
 
 export async function doctorCommand(
   root: string,
+  nodeId: string | undefined,
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
+  if (nodeId) return nodeDoctorCommand(root, nodeId, json);
   const strict = Boolean(options.strict);
   const schema = await schemaStatusForRoot(root);
   const validationResult = schema.ok
@@ -163,7 +174,25 @@ export async function readyCommand(
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
-  return output(formatRows(filterNodes(await readyNodes(root), options), options), json);
+  if (options.mergeable) {
+    const statuses = await githubMergeQueue(root, options);
+    return output(
+      statuses.map((status) => ({
+        id: status.nodeId,
+        pr: status.pr.number,
+        checks: status.checkState,
+        behind: status.behind,
+        mergeability: status.pr.mergeStateStatus,
+        url: status.pr.url,
+      })),
+      json,
+    );
+  }
+  const effectiveOptions =
+    !json && !options.fields && !options.tsv && !options.full
+      ? { ...options, compact: true }
+      : options;
+  return output(formatRows(filterNodes(await readyNodes(root), options), effectiveOptions), json);
 }
 
 export async function exportCommand(
@@ -181,8 +210,8 @@ export async function exportCommand(
   }
   const exported = options.deterministic ? deterministicGraphSnapshot(snapshot) : snapshot;
   const config = await readConfig(root);
-  const outPath = stringOpt(options.out) ?? config.exportDefaultOut;
-  if (!outPath) return output(exported, true);
+  const outPath = stringOpt(options.out) ?? (config.exportDefaultOut || "roadmap/spec-dag.json");
+  if (outPath === "-") return output(exported, true);
 
   const resolvedOut = path.resolve(root, outPath);
   await mkdir(path.dirname(resolvedOut), { recursive: true });
@@ -228,8 +257,13 @@ export async function snapshotCommand(
   output(result, json);
 }
 
-export async function statusCommand(root: string, json: boolean): Promise<void> {
-  return output(await stats(root), json);
+export async function statusCommand(
+  root: string,
+  options: Record<string, string | string[] | boolean>,
+  json: boolean,
+): Promise<void> {
+  const result = await stats(root);
+  return output(projectRecord(result as unknown as Record<string, unknown>, options), json);
 }
 
 export async function milestoneStatus(

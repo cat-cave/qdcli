@@ -124,9 +124,11 @@ describe("method acknowledgement and template contracts", () => {
       "finding",
       "milestone",
       "reality-check",
+      "reconciliation-report",
       "research-report",
       "spec",
       "unblock-report",
+      "verification-signoff-report",
     ]);
     expect(reportTemplate("completion-report")).toEqual({
       nodeId: "node-id",
@@ -271,7 +273,7 @@ describe("method acknowledgement and template contracts", () => {
   it("records, validates, and rejects stale method acknowledgements", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "qd-method-contract-"));
     try {
-      expect(METHOD_VERSION).toBe("evidence-first-2026-06-29");
+      expect(METHOD_VERSION).toBe("evidence-first-2026-07-10");
       expect(METHOD_TEXT).toContain("Research precedes roadmap");
       expect(methodHash()).toMatch(/^[a-f0-9]{64}$/);
       await expect(requireMethodAcknowledged(root, "node add")).rejects.toThrow(

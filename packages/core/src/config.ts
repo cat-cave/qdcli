@@ -59,7 +59,7 @@ export const defaultConfig: QdConfig = {
   cleanWorktreeExcept: [".qd/"],
   requireGateBeforeCi: true,
   requireCiBeforeMerge: true,
-  exportDefaultOut: "",
+  exportDefaultOut: "roadmap/spec-dag.json",
   exportCanonicalizeCommand: "",
   hooks: {
     preClaim: "",

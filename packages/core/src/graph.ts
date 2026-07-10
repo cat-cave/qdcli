@@ -51,6 +51,7 @@ export {
   readyNodes,
   removeEdge,
   setNodeStatus,
+  setNodePullRequest,
   setupProject,
   updateNode,
 } from "./graph-nodes.js";
@@ -59,10 +60,19 @@ import { graphSnapshot } from "./graph-snapshot.js";
 export {
   deterministicGraphSnapshot,
   graphSnapshot,
+  nodeDetailSnapshot,
   replaceGraphSnapshot,
   restoreGraphSnapshot,
 } from "./graph-snapshot.js";
 export { validateGraphSnapshotForWrite } from "./graph-snapshot-validation.js";
+export { reconcileNode } from "./graph-reconcile.js";
+export type {
+  ReconcileCiInput,
+  ReconcileFindingInput,
+  ReconcileNodeInput,
+  ReconcileNodeResult,
+  ReconcileVerificationInput,
+} from "./graph-reconcile.js";
 export type {
   AddAssignmentInput,
   AddNodeInput,

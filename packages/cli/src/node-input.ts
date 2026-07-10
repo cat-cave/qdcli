@@ -320,6 +320,8 @@ export function qdNodeFromInput(
     risk: input.risk ?? "medium",
     owner: null,
     branch: null,
+    pr_number: null,
+    pr_url: null,
     spec: input.spec,
     acceptance: input.acceptance,
     validation: input.validation ?? null,

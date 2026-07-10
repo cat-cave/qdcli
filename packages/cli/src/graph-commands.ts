@@ -7,11 +7,11 @@ import {
   claimNode,
   getNode,
   listEdges,
-  listFindings,
   listNodeNotes,
   listNodes,
-  listRuns,
   markMerged,
+  nodeDetailSnapshot,
+  policyReport,
   readConfig,
   removeEdge,
   updateNode,
@@ -26,20 +26,35 @@ import {
   strictOptionalEnum,
 } from "./enums.js";
 import { readJson } from "./file-io.js";
-import { filterNodes, formatRows } from "./graph-format.js";
+import { filterNodes, formatRows, projectRecord } from "./graph-format.js";
 import { nodeInputFromOptions, nodeUpdateFromOptions, normalizeNodeInput } from "./node-input.js";
 import { asRecord, optionalStringField, requiredNodeStringField } from "./object-utils.js";
 import { runPolicyHook } from "./shell.js";
+import {
+  githubPrStatus,
+  linkNodePullRequest,
+  mergeGitHubPullRequest,
+  tryAutoLinkPullRequest,
+} from "./github-pr.js";
 
 export async function nodeCommand(
   root: string,
   action: string | undefined,
   id: string | undefined,
+  positionals: string[],
   options: Record<string, string | string[] | boolean>,
   json: boolean,
 ): Promise<void> {
   if (action === "add") {
     return output(await addNode(root, await nodeInputFromOptions(root, options)), json);
+  }
+  if (action === "set-pr") {
+    const nodeId = requiredArg(id, "node id");
+    const reference = positionals[0] ?? required(options.pr, "pull request number or URL");
+    return output(
+      await linkNodePullRequest(root, nodeId, reference, { repo: stringOpt(options.repo) }),
+      json,
+    );
   }
   if (action === "note") return nodeNoteCommand(root, id, options, json);
   if (action === "show") return nodeShowCommand(root, id, options, json);
@@ -125,6 +140,11 @@ export async function claimCommand(
   json: boolean,
 ): Promise<void> {
   const config = await readConfig(root);
+  if (options.pr) {
+    await linkNodePullRequest(root, requiredArg(nodeId, "node id"), required(options.pr, "--pr"), {
+      repo: stringOpt(options.repo),
+    });
+  }
   if (!options["no-hooks"] && config.hooks.preClaim.trim()) {
     await runPolicyHook(root, config.hooks.preClaim, { root, node: nodeId ?? "" });
   }
@@ -140,7 +160,10 @@ export async function claimCommand(
       branch: node.branch ?? "",
     });
   }
-  return output(node, json);
+  return output(
+    options.pr ? await getNode(root, node.id) : await tryAutoLinkPullRequest(root, node.id),
+    json,
+  );
 }
 
 export async function mergeCommand(
@@ -151,22 +174,56 @@ export async function mergeCommand(
 ): Promise<void> {
   const id = requiredArg(nodeId, "node id");
   const config = await readConfig(root);
+  const strategy = strictEnumOpt(
+    options.strategy,
+    isMergeStrategy,
+    "--strategy",
+    config.mergeStrategy,
+  );
   if (!options["no-hooks"] && config.hooks.preMerge.trim()) {
     await runPolicyHook(root, config.hooks.preMerge, { root, node: id });
   }
-  const node = await markMerged(
-    root,
-    id,
-    strictEnumOpt(options.strategy, isMergeStrategy, "--strategy", "squash"),
-    {
-      commitSha:
-        stringOpt(options["use-existing-commit"]) ?? stringOpt(options["already-merged-at"]),
-    },
-  );
+  let integration: Awaited<ReturnType<typeof mergeGitHubPullRequest>> | undefined;
+  if (options["via-pr"]) {
+    const current = await getNode(root, id);
+    if (current.status !== "mergeable") {
+      throw new Error(`Cannot merge node with status ${current.status}; expected mergeable`);
+    }
+    const policy = await policyReport(root, id, "merge");
+    if (!policy.ok) throw new Error(policy.violations.map((item) => item.message).join("; "));
+    const status = await githubPrStatus(root, current, { repo: stringOpt(options.repo) });
+    if (!status.readyToMerge) {
+      throw new Error(
+        `PR #${status.pr.number} is not ready to merge: checks=${status.checkState}, behind=${status.behind}, mergeability=${status.pr.mergeStateStatus}`,
+      );
+    }
+    integration = await mergeGitHubPullRequest(root, current, strategy, {
+      repo: stringOpt(options.repo),
+    });
+  }
+  const node = await markMerged(root, id, strategy, {
+    commitSha:
+      integration?.commitSha ??
+      stringOpt(options["use-existing-commit"]) ??
+      stringOpt(options["already-merged-at"]),
+  });
   if (!options["no-hooks"] && config.hooks.postMerge.trim()) {
     await runPolicyHook(root, config.hooks.postMerge, { root, node: id });
   }
-  return output(node, json);
+  output(
+    {
+      ...node,
+      operation: integration ? "git-and-ledger" : "ledger-only",
+      gitIntegrated: Boolean(integration),
+      pullRequest: integration?.pr ?? null,
+    },
+    json,
+  );
+  if (!json && !integration) {
+    console.error(
+      "Note: qd merge updated the ledger only; git integration remains your responsibility.",
+    );
+  }
 }
 
 export async function edgeCommand(
@@ -208,7 +265,18 @@ async function nodeShowCommand(
 ): Promise<void> {
   const nodeId = requiredArg(id, "node id");
   const node = await getNode(root, nodeId);
-  if (options.summary || options["no-big-text"]) {
+  if (options.fields) {
+    if (options.full || options.include) {
+      throw new Error("qd node show --fields cannot be combined with --full or --include");
+    }
+    return output(projectRecord(node as unknown as Record<string, unknown>, options), json);
+  }
+  if (
+    options.summary ||
+    options["no-big-text"] ||
+    options.compact ||
+    (!json && !options.full && !options.include)
+  ) {
     return output(
       {
         id: node.id,
@@ -220,6 +288,8 @@ async function nodeShowCommand(
         risk: node.risk,
         owner: node.owner,
         branch: node.branch,
+        pr_number: node.pr_number ?? null,
+        pr_url: node.pr_url ?? null,
         group_name: node.group_name,
         projects: node.projects,
         blocked_by: node.blocked_by,
@@ -242,13 +312,15 @@ async function nodeShowCommand(
   for (const item of include) {
     if (!allowedIncludes.has(item)) throw new Error(`--include contains unknown section: ${item}`);
   }
-  const result: Record<string, unknown> = { node };
-  if (include.has("findings")) result.findings = await listFindings(root, { nodeId });
-  if (include.has("notes")) result.notes = await listNodeNotes(root, nodeId);
+  const detail = await nodeDetailSnapshot(root, nodeId);
+  const result: Record<string, unknown> = { node: detail.node };
+  if (include.has("findings")) result.findings = detail.findings;
+  if (include.has("notes")) result.notes = detail.notes;
   if (include.has("runs") || include.has("audits")) {
-    const runs = await listRuns(root, nodeId);
-    if (include.has("runs")) result.runs = runs;
-    if (include.has("audits")) result.audits = runs.filter((run) => run.kind === "audit");
+    if (include.has("runs")) result.runs = detail.runs;
+    if (include.has("audits")) {
+      result.audits = detail.runs.filter((run) => run.kind === "audit");
+    }
   }
   return output(result, json);
 }

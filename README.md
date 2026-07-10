@@ -87,7 +87,17 @@ See `docs/import.md` for strict migration mapping, `statusMap`, folded fields, d
 
 For a repo that already commits a qd export, restore the local cache with `qd sync --from roadmap/spec-dag.json --dry-run --json` and then `qd sync --from roadmap/spec-dag.json`.
 
-`qd merge` records qd state only. It does not run git or GitHub merges; keep using the repo's normal merge workflow and use qd to enforce the DAG, audit, and green-CI gate.
+For GitHub-backed work, link the PR at claim time (`qd claim <node> --pr <number-or-url>`) or later with `qd node set-pr`. `qd ci status|watch`, `qd monitor`, and `qd sync-prs` aggregate required PR checks and expose stale-base drift. Once mergeable, `qd merge <node> --via-pr` performs the protected `gh pr merge` and records its resulting commit. `--use-existing-commit` remains the ledger-only path for externally integrated work.
+
+For work already integrated into the current `HEAD`, use the evidence-preserving one-call path instead of replaying lifecycle commands:
+
+```sh
+qd template reconciliation-report > /tmp/qd-reconciliation.json
+# Fill in completion, independent audit, exact verification, and trusted CI evidence.
+qd reconcile <node> --commit <integrated-sha> --from-report /tmp/qd-reconciliation.json
+```
+
+`qd export --deterministic` writes `roadmap/spec-dag.json` by default. Pass `--out -` only when the canonical JSON should be streamed to stdout.
 
 Start the installed read-only viewer:
 

@@ -362,4 +362,12 @@ export const migrations = [
     id: "008_evidence_first_blockers",
     statements: evidenceFirstBlockerMigrationStatements,
   },
+  {
+    id: "009_node_pull_requests",
+    statements: [
+      `alter table nodes add column pr_number integer`,
+      `alter table nodes add column pr_url text`,
+      `create index if not exists idx_nodes_pr_number on nodes(pr_number)`,
+    ],
+  },
 ] as const;

@@ -3,15 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  all,
   defaultConfig,
   exec,
   formatConfig,
+  get,
+  isLedgerLockError,
   migrateProject,
   openDatabase,
   parseConfig,
   readConfig,
   run,
   schemaStatusForRoot,
+  type Database,
   writeConfig,
 } from "./db.js";
 import { migrations } from "./schema.js";
@@ -296,5 +300,91 @@ require_ci_before_merge = true
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("database consistency helpers", () => {
+  it("recognizes every supported SQLite lock error spelling", () => {
+    expect(isLedgerLockError(new Error("SQLITE_BUSY: database is busy"))).toBe(true);
+    expect(isLedgerLockError(new Error("SQLITE_LOCKED_SHAREDCACHE"))).toBe(true);
+    expect(isLedgerLockError("database is locked")).toBe(true);
+    expect(isLedgerLockError("database table is locked")).toBe(true);
+    expect(isLedgerLockError(new Error("constraint failed"))).toBe(false);
+    expect(isLedgerLockError(null)).toBe(false);
+  });
+
+  it("retries transient lock failures and preserves query parameters and values", async () => {
+    let attempts = 0;
+    const runParams: unknown[][] = [];
+    const db = {
+      prepare: async (sql: string) => {
+        attempts += 1;
+        if (attempts < 4) throw new Error("SQLITE_BUSY");
+        expect(sql).toBe("update nodes set status = ? where id = ?");
+        return {
+          run: async (...params: unknown[]) => {
+            runParams.push(params);
+          },
+        };
+      },
+    } as unknown as Database;
+    await run(db, "update nodes set status = ? where id = ?", ["done", "node-a"]);
+    expect(attempts).toBe(4);
+    expect(runParams).toEqual([["done", "node-a"]]);
+  });
+
+  it("raises an explicit retryable ledger error after the bounded retry budget", async () => {
+    let attempts = 0;
+    const cause = new Error("database table is locked");
+    const db = {
+      prepare: async () => {
+        attempts += 1;
+        throw cause;
+      },
+    } as unknown as Database;
+    await expect(exec(db, "select 1")).rejects.toMatchObject({
+      message: "ledgerLocked: qd could not obtain a consistent ledger snapshot; retry the command",
+      cause,
+    });
+    expect(attempts).toBe(4);
+  });
+
+  it("does not retry non-lock failures", async () => {
+    let attempts = 0;
+    const failure = new Error("syntax error");
+    const db = {
+      prepare: async () => {
+        attempts += 1;
+        throw failure;
+      },
+    } as unknown as Database;
+    await expect(exec(db, "invalid sql")).rejects.toBe(failure);
+    expect(attempts).toBe(1);
+  });
+
+  it("returns exact get/all results from prepared statements", async () => {
+    const calls: unknown[][] = [];
+    const db = {
+      prepare: async (sql: string) => ({
+        get: async (...params: unknown[]) => {
+          calls.push(["get", sql, ...params]);
+          return { id: "node-a" };
+        },
+        all: async (...params: unknown[]) => {
+          calls.push(["all", sql, ...params]);
+          return [{ id: "node-a" }, { id: "node-b" }];
+        },
+      }),
+    } as unknown as Database;
+    await expect(get<{ id: string }>(db, "select one where id = ?", ["node-a"])).resolves.toEqual({
+      id: "node-a",
+    });
+    await expect(
+      all<{ id: string }>(db, "select all where status = ?", ["ready"]),
+    ).resolves.toEqual([{ id: "node-a" }, { id: "node-b" }]);
+    expect(calls).toEqual([
+      ["get", "select one where id = ?", "node-a"],
+      ["all", "select all where status = ?", "ready"],
+    ]);
   });
 });

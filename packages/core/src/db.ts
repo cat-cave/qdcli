@@ -100,7 +100,7 @@ require_gate_before_ci = true
 require_ci_before_merge = true
 
 [export]
-default_out = ""
+default_out = "roadmap/spec-dag.json"
 canonicalize_command = ""
 
 [hooks]
@@ -181,6 +181,9 @@ export async function openDatabase(
 ): Promise<Database> {
   const paths = getProjectPaths(root);
   const db = await connect(paths.dbPath);
+  await exec(db, "pragma busy_timeout = 5000");
+  await exec(db, "pragma journal_mode = wal");
+  await exec(db, "pragma synchronous = normal");
   await exec(db, "pragma foreign_keys = on");
   if (!options.skipSchemaCheck) await assertSchemaCurrent(db);
   return db;
@@ -263,13 +266,17 @@ async function tableExists(db: Database, name: string): Promise<boolean> {
 }
 
 export async function exec(db: Database, sql: string): Promise<void> {
-  const statement = await db.prepare(sql);
-  await statement.run();
+  await withBusyRetry(async () => {
+    const statement = await db.prepare(sql);
+    await statement.run();
+  });
 }
 
 export async function run(db: Database, sql: string, params: unknown[] = []): Promise<void> {
-  const statement = await db.prepare(sql);
-  await statement.run(...params);
+  await withBusyRetry(async () => {
+    const statement = await db.prepare(sql);
+    await statement.run(...params);
+  });
 }
 
 export async function get<T>(
@@ -277,15 +284,45 @@ export async function get<T>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T | undefined> {
-  const statement = await db.prepare(sql);
-  const row = await statement.get(...params);
-  return row as T | undefined;
+  return withBusyRetry(async () => {
+    const statement = await db.prepare(sql);
+    const row = await statement.get(...params);
+    return row as T | undefined;
+  });
 }
 
 export async function all<T>(db: Database, sql: string, params: unknown[] = []): Promise<T[]> {
-  const statement = await db.prepare(sql);
-  const rows = await statement.all(...params);
-  return rows as T[];
+  return withBusyRetry(async () => {
+    const statement = await db.prepare(sql);
+    const rows = await statement.all(...params);
+    return rows as T[];
+  });
+}
+
+export function isLedgerLockError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /SQLITE_(?:BUSY|LOCKED)|database is locked|database table is locked/i.test(message);
+}
+
+async function withBusyRetry<T>(operation: () => Promise<T>): Promise<T> {
+  const delays = [25, 75, 150, 300];
+  for (const [attempt, delay] of delays.entries()) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isLedgerLockError(error)) throw error;
+      if (attempt === delays.length - 1) {
+        throw new Error(
+          "ledgerLocked: qd could not obtain a consistent ledger snapshot; retry the command",
+          { cause: error },
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error(
+    "ledgerLocked: qd could not obtain a consistent ledger snapshot; retry the command",
+  );
 }
 
 async function writeIfMissing(filePath: string, content: string): Promise<void> {

@@ -30,6 +30,8 @@ import {
   verificationSchema,
   waveSchema,
 } from "./schemas.js";
+import { verificationSignoffReportSchema } from "./verification-report.js";
+import { reconciliationReportSchema } from "./reconciliation-report.js";
 import { reportTemplate, templateNames } from "./report-templates.js";
 import { isDiffTool } from "./diff.js";
 import { doctorCommand } from "./project-commands.js";
@@ -167,9 +169,11 @@ export function schemaCommand(
       },
     },
     spec: specSchema(),
+    "reconciliation-report": reconciliationReportSchema(),
     "unblock-report": unblockReportSchema(),
     assignment: assignmentSchema(),
     verification: verificationSchema(),
+    "verification-signoff-report": verificationSignoffReportSchema(),
     "external-ci": externalCiSchema(),
     wave: waveSchema(),
   };
@@ -281,7 +285,7 @@ export async function agentCommand(
       json,
     );
   }
-  if (action === "doctor") return doctorCommand(root, options, json);
+  if (action === "doctor") return doctorCommand(root, undefined, options, json);
   throw new Error(`Unknown agent action: ${action}`);
 }
 

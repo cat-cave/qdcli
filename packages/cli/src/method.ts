@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { output, stringOpt } from "./args.js";
 
-export const METHOD_VERSION = "evidence-first-2026-06-29";
+export const METHOD_VERSION = "evidence-first-2026-07-10";
 
 export const METHOD_TEXT = `qd strict orchestration method
 
@@ -17,7 +17,7 @@ Non-negotiables:
 - Audit means evidence review against spec and acceptance. CI is not an audit.
 - Environment, credential, provider, URL, schema, and data-access failures are blockers when the node depends on them.
 - Mock-only validation is insufficient for real integration work unless the spec explicitly says the node only targets a mock, fixture, or adapter boundary.
-- Main stays green. Merge state is recorded only after trusted CI and the repository's real merge have happened.
+- Main stays green. GitHub PR checks must be observed rather than asserted, stale PR branches must be refreshed, and merge state is recorded only after trusted CI and the repository's real integration have happened.
 - If the graph is wrong, fix the graph. Do not bypass the ready queue.
 - There is no warning-only mode for the roadmap contract.
 

@@ -97,6 +97,8 @@ export async function updateNode(
       | "status"
       | "owner"
       | "branch"
+      | "pr_number"
+      | "pr_url"
       | "priority"
       | "risk"
       | "spec"
@@ -131,7 +133,7 @@ export async function updateNode(
     `update nodes set
       title = ?, kind = ?, milestone = ?, group_name = ?, projects_json = ?, status = ?, priority = ?, estimate_points = ?, risk = ?,
       owner = ?, branch = ?, spec = ?, acceptance = ?, validation = ?, verification_json = ?, audit_focus_json = ?, context = ?, status_reason = ?,
-      check_command = ?, ci_command = ?, blocked_by = ?, blocked_reason = ?, blocked_owner = ?, updated_at = ?
+      check_command = ?, ci_command = ?, blocked_by = ?, blocked_reason = ?, blocked_owner = ?, pr_number = ?, pr_url = ?, updated_at = ?
     where id = ?`,
     [
       next.title,
@@ -157,11 +159,27 @@ export async function updateNode(
       next.blocked_by,
       next.blocked_reason,
       next.blocked_owner,
+      next.pr_number,
+      next.pr_url,
       next.updated_at,
       id,
     ],
   );
   return getNode(root, id);
+}
+
+export async function setNodePullRequest(
+  root: string,
+  nodeId: string,
+  input: { number: number; url: string },
+): Promise<QdNode> {
+  if (!Number.isInteger(input.number) || input.number < 1) {
+    throw new Error("pull request number must be a positive integer");
+  }
+  if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+(?:[/?#].*)?$/i.test(input.url)) {
+    throw new Error("pull request URL must be a GitHub pull request URL");
+  }
+  return updateNode(root, nodeId, { pr_number: input.number, pr_url: input.url });
 }
 
 export async function listNodes(root: string): Promise<QdNode[]> {

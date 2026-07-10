@@ -39,4 +39,9 @@ JSON
 
 "$qd" node add --from-json node.json --json
 "$qd" finding list --json
-"$qd" export --out roadmap/spec-dag.json --json
+"$qd" export --deterministic --json
+test -f roadmap/spec-dag.json
+"$qd" export --out - --json > streamed-export.json
+node -e 'JSON.parse(require("node:fs").readFileSync("streamed-export.json", "utf8"))'
+"$qd" schema print reconciliation-report > reconciliation-schema.json
+node -e 'JSON.parse(require("node:fs").readFileSync("reconciliation-schema.json", "utf8"))'

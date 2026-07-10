@@ -8,6 +8,13 @@ import {
 } from "@cat-cave/qdcli-core";
 import { numberOpt, output, required, requiredArg, stringOpt } from "./args.js";
 import { runConfiguredCheck } from "./checks.js";
+import {
+  githubCiStatusCommand,
+  githubCiWatchCommand,
+  recordVerifiedGitHubCi,
+  verifiedGithubCiStatus,
+} from "./github-ci-commands.js";
+import { getNode } from "@cat-cave/qdcli-core";
 import { captureCommand, sleep } from "./shell.js";
 
 export async function ciCommand(
@@ -19,6 +26,8 @@ export async function ciCommand(
 ): Promise<void> {
   if (action === "run")
     return runConfiguredCheck(root, requiredArg(nodeId, "node id"), "ci", options, json);
+  if (action === "status") return githubCiStatusCommand(root, nodeId, options, json);
+  if (action === "watch") return githubCiWatchCommand(root, nodeId, options, json);
   if (action === "poll" || action === "wait") {
     return pollCi(root, requiredArg(nodeId, "node id"), options, json);
   }
@@ -35,12 +44,28 @@ export async function ciCommand(
       "Use qd ci record-pass <node> --summary <text> with --log-path, --url, or --external-id",
     );
   if (action === "record-pass") {
+    const id = requiredArg(nodeId, "node id");
+    const config = await readConfig(root);
+    if ((stringOpt(options.provider) ?? config.ciProvider) === "github") {
+      const status = await verifiedGithubCiStatus(root, id, options);
+      return output(
+        {
+          node: await recordVerifiedGitHubCi(root, await getNode(root, id), status),
+          observed: status,
+        },
+        json,
+      );
+    }
     const evidence = ciEvidence(options);
     return output(
-      await recordCiResult(root, requiredArg(nodeId, "node id"), {
+      await recordCiResult(root, id, {
         status: "passed",
         summary: `${required(options.summary, "--summary")}\n${evidence.summary}`,
         logPath: evidence.logPath,
+        provider: stringOpt(options.provider) ?? "external",
+        gitSha: stringOpt(options.sha),
+        externalId: evidence.externalId,
+        url: evidence.url,
       }),
       json,
     );
@@ -76,6 +101,7 @@ async function pollCi(
 
 export async function latestMergeCommitSha(root: string, nodeId: string): Promise<string | null> {
   const run = await latestRun(root, nodeId, "merge");
+  if (run?.git_sha) return run.git_sha;
   const summary = run?.summary ?? "";
   const match = /\b[0-9a-f]{7,40}\b/i.exec(summary);
   return match?.[0] ?? null;
@@ -121,6 +147,10 @@ async function pollGitHubCi(
         status: terminal.ok ? "passed" : "failed",
         summary: terminal.summary,
         logPath: null,
+        provider: "github",
+        gitSha: sha,
+        externalId: lastRun?.databaseId ? String(lastRun.databaseId) : null,
+        url: lastRun?.url ?? null,
       });
       return { ok: terminal.ok, provider: "github", repo, workflow, sha, run: lastRun, node };
     }
@@ -220,6 +250,8 @@ export function githubCiTerminalResult(
 export function ciEvidence(options: Record<string, string | string[] | boolean>): {
   summary: string;
   logPath?: string;
+  url?: string;
+  externalId?: string;
 } {
   const logPath = stringOpt(options["log-path"]);
   const url = stringOpt(options.url);
@@ -232,5 +264,5 @@ export function ciEvidence(options: Record<string, string | string[] | boolean>)
     url ? `url=${url}` : null,
     externalId ? `external_id=${externalId}` : null,
   ].filter(Boolean);
-  return { summary: `Evidence: ${parts.join(", ")}`, logPath };
+  return { summary: `Evidence: ${parts.join(", ")}`, logPath, url, externalId };
 }

@@ -160,6 +160,18 @@ export function formatRows(
   return shaped;
 }
 
+export function projectRecord(
+  row: Record<string, unknown>,
+  options: Record<string, string | string[] | boolean>,
+): Record<string, unknown> {
+  const fields = stringOpt(options.fields)
+    ?.split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+  if (!fields) return row;
+  return Object.fromEntries(fields.map((field) => [field, row[field] ?? null]));
+}
+
 export function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {

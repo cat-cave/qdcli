@@ -30,11 +30,11 @@ qd config set ci-command "<full project CI command>"
 10. Missing required evidence, unreachable required APIs/providers/environments, or unverified acceptance is P1 unless the spec explicitly excludes that surface.
 11. P0/P1 findings are resolved before CI or merge.
 12. P2/P3 findings are promoted into future nodes after the current node passes.
-13. Declared manual verification is signed off with `qd verification sign-off <node> --type manual --note "..." --evidence <path>`.
+13. Declared verification is inspected with `qd verification list <node>` and signed off by exact index with `qd verification sign-off <node> --index <n> --note "..." --evidence <path>`.
 14. The orchestrator runs `qd check run <node>` when a fast preflight is useful.
-15. The orchestrator runs `qd ci run <node>` or `qd ci poll <node>` rather than manually recording a pass when qd can observe the provider.
-16. The orchestrator performs the repo's actual git/GitHub merge through the normal workflow.
-17. The orchestrator records `qd merge <node> --use-existing-commit <sha>` only after qd marks the node mergeable.
+15. For linked GitHub PRs, the orchestrator uses `qd ci status|watch`, `qd monitor`, or `qd sync-prs`; required checks are observed rather than manually asserted.
+16. The orchestrator uses `qd ready --mergeable` to find green, audited, current PRs and `qd merge <node> --via-pr` to integrate them.
+17. For non-PR integrations, the orchestrator records `qd merge <node> --use-existing-commit <sha>` only after qd marks the node mergeable.
 18. Shared qd state is exported with `qd export --deterministic --out roadmap/spec-dag.json`; another clone restores the local cache with `qd sync --from roadmap/spec-dag.json`.
 
 After about 10 merged nodes, run a repo-wide audit and add every real finding to

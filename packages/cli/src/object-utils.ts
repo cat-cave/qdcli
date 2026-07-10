@@ -125,6 +125,8 @@ function normalizeCanonicalNode(node: unknown, index: number): QdNode {
     projects: node.projects ?? [],
     owner: node.owner ?? null,
     branch: node.branch ?? null,
+    pr_number: node.pr_number ?? null,
+    pr_url: node.pr_url ?? null,
     validation: node.validation ?? null,
     verification: node.verification ?? [],
     audit_focus: node.audit_focus ?? [],

@@ -35,15 +35,14 @@ nix develop -c just release-check
 
 `just mutation` runs Stryker across qd's core and CLI source, excluding tests, public barrel exports, and embedded prompt prose. The current release ratchet is `thresholds.break = 81`. String-literal and regex mutants are excluded because qd's parser-heavy import/config code creates low-signal churn there; state-machine, conditional, arithmetic, object, array, and method mutants remain in scope.
 
-## 0.2.0 Strict Method Release Checklist
+## 0.3.0 Reliability Release Checklist
 
-Before cutting the first strict-method release, validate both the general package
-surface and the agent-facing orchestration contract:
+Before cutting 0.3.0, validate the package surface, evidence contracts, reconciliation flow, concurrent ledger reads, and fake-`gh` PR integration harness:
 
 ```sh
 nix develop -c corepack pnpm exec vp check
 nix develop -c corepack pnpm exec vp test run --coverage
-nix develop -c corepack pnpm exec vitest run packages/cli/src/cli-strict-method.e2e.test.ts
+nix develop -c corepack pnpm exec vitest run packages/cli/src/cli-strict-method.e2e.test.ts packages/cli/src/cli-reconcile-reliability.e2e.test.ts packages/cli/src/cli-github-pr.e2e.test.ts
 nix develop -c just npm-smoke
 nix develop -c just mutation
 nix build .#packages.x86_64-linux.qd
@@ -68,10 +67,7 @@ npx @cat-cave/qdcli@latest --version
 npx @cat-cave/qdcli@latest schema list --json
 ```
 
-The strict-method E2E target must prove that weak agent paths fail: summary-only
-completion is rejected, clean audits without real-world validation are rejected,
-structured blocker/unblock flow works, prompts/help force the reality contract,
-and the public schemas expose the contracts agents must write.
+The E2E targets must prove that weak evidence paths fail, reconciliation is atomic, JSON output remains parseable around noisy checks, GitHub passes are observed through `gh`, stale PRs remain visible, and PR-driven merges record GitHub's actual commit SHA.
 
 ## Changesets Release Flow
 
@@ -128,6 +124,6 @@ Configure each package on npmjs.com under package Settings -> Trusted Publishing
 - Workflow filename: `publish.yml`
 - Allowed action: `npm publish`
 
-The workflow validates the repo, then lets Changesets publish the core and CLI packages through pnpm using npm's OIDC trusted publisher flow.
+The workflow runs the same full `release-check` gate, including mutation testing, then lets Changesets publish the core and CLI packages through pnpm using npm's OIDC trusted publisher flow.
 
 The workflow runs `changeset publish --no-git-tag`. Changesets detects pnpm and publishes only packages whose local version is newer than npm, while pnpm handles workspace dependency rewriting. Git tags are owned by qd's `v<version>` release tags, so package-specific Changesets tags are disabled.

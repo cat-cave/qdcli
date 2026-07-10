@@ -151,6 +151,10 @@ export async function recordCiResult(
     status: "passed" | "failed";
     summary: string;
     logPath?: string | null;
+    provider?: string | null;
+    gitSha?: string | null;
+    externalId?: string | null;
+    url?: string | null;
     startedAt?: string;
     finishedAt?: string;
   },
@@ -173,6 +177,12 @@ export async function recordCiResult(
     input.logPath,
     startedAt,
     finishedAt,
+    {
+      provider: input.provider,
+      gitSha: input.gitSha,
+      externalId: input.externalId,
+      url: input.url,
+    },
   );
   const nextStatus =
     input.status === "passed"
@@ -338,10 +348,11 @@ export async function markMerged(
   const now = new Date().toISOString();
   await run(
     db,
-    "insert into runs (id, node_id, kind, status, started_at, finished_at, summary) values (?, ?, 'merge', 'recorded', ?, ?, ?)",
+    "insert into runs (id, node_id, kind, status, git_sha, started_at, finished_at, summary) values (?, ?, 'merge', 'recorded', ?, ?, ?, ?)",
     [
       randomUUID(),
       nodeId,
+      input.commitSha ?? null,
       now,
       now,
       input.commitSha
@@ -380,11 +391,32 @@ async function recordRunResult(
   logPath: string | null | undefined,
   startedAt: string,
   finishedAt: string,
+  evidence: {
+    provider?: string | null;
+    gitSha?: string | null;
+    externalId?: string | null;
+    url?: string | null;
+  } = {},
 ): Promise<void> {
   await run(
     db,
-    `insert into runs (id, node_id, kind, status, started_at, finished_at, summary, log_path)
-    values (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [randomUUID(), nodeId, kind, status, startedAt, finishedAt, summary, logPath ?? null],
+    `insert into runs (
+      id, node_id, kind, status, provider, git_sha, external_id, url,
+      started_at, finished_at, summary, log_path
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      randomUUID(),
+      nodeId,
+      kind,
+      status,
+      evidence.provider ?? null,
+      evidence.gitSha ?? null,
+      evidence.externalId ?? null,
+      evidence.url ?? null,
+      startedAt,
+      finishedAt,
+      summary,
+      logPath ?? null,
+    ],
   );
 }

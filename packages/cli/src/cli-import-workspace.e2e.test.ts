@@ -156,11 +156,12 @@ describe("qd CLI import, workspace, and diff surfaces", () => {
       "import",
       "--from",
       "merge-source.json",
-      "--merge",
+      "--replace",
       "--allow-defaults",
       "--json",
     );
     expect(mergedImport.importedNodes).toBe(2);
+    expect(mergedImport.action).toBe("replaced-local-cache");
     expect((await qdJson("ready", "--json")).map((node: any) => node.id)).toEqual(["merged-alpha"]);
 
     await writeFile(

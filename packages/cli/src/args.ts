@@ -24,7 +24,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const key = requiredArg(rawKey, "option name");
       const next = argv[i + 1];
       const hasInlineValue = inlineValue !== undefined;
-      const value = hasInlineValue ? inlineValue : next && !next.startsWith("-") ? next : true;
+      const value: string | boolean = hasInlineValue
+        ? (inlineValue ?? "")
+        : next === "-" || (next && !next.startsWith("-"))
+          ? next
+          : true;
       if (!hasInlineValue && value !== true) i += 1;
 
       const current = options[key];

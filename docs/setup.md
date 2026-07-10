@@ -110,7 +110,7 @@ until the current method is acknowledged. After upgrading qd, rerun
 Treat `.qd/qd.db` as a local cache. Do not commit it. For shared state across machines, worktrees, or remote orchestrator hosts, commit a qd JSON export:
 
 ```sh
-qd export --out roadmap/spec-dag.json
+qd export --deterministic
 ```
 
 On another clone or machine, rebuild the local cache from the committed qd JSON with sync:
@@ -122,7 +122,7 @@ qd sync --from roadmap/spec-dag.json --dry-run --write-diff roadmap/sync-diff.js
 qd sync --from roadmap/spec-dag.json
 ```
 
-`qd export` includes nodes, edges, registries, findings, runs, and node notes. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` in automation when the local cache is expected to already match the committed JSON; qd exits non-zero with a drift summary rather than silently rewriting state. Use `qd import --schema-mapping` only when importing a non-qd source roadmap or bootstrapping an empty qd DAG.
+`qd export` includes nodes, edges, registries, findings, runs, and node notes and writes `roadmap/spec-dag.json` by default. Use `--out -` for stdout. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` in automation when the local cache is expected to already match the committed JSON. Use `qd import --schema-mapping` for non-qd sources and `--replace` only when that source is intentionally authoritative.
 
 Configure the local preflight command and the canonical green command:
 
@@ -142,7 +142,7 @@ Use the repository's real commands. qd is language- and stack-neutral.
 The lifecycle policy is strict because qd is designed to keep main green: audit
 before CI, declared verification before CI, no undisposed P2/P3 findings before
 merge, and a real merge commit recorded with
-`qd merge --use-existing-commit <sha>`. Do not weaken this for normal
+`qd merge --via-pr` or `qd merge --use-existing-commit <sha>`. Do not weaken this for normal
 orchestration; if reality prevents progress, record a blocker or revise the DAG.
 
 If the repository uses a supported hosted CI adapter, configure it separately from local commands. The first built-in adapter is GitHub through the `gh` CLI:
@@ -152,7 +152,7 @@ qd config set ci-provider github --repo owner/name --workflow ci.yml --auth gh-c
 qd config get ci-provider
 ```
 
-Provider polling is optional. If no adapter fits the project, keep using `qd ci run` for local trusted CI or `qd ci record-pass` with explicit evidence for externally completed CI.
+Link GitHub PRs with `qd claim <node> --pr <number-or-url>` or `qd node set-pr`. Use `qd ci status|watch`, `qd monitor`, and `qd sync-prs` for required-check aggregation and stale-base visibility; use `qd merge --via-pr` for protected integration. Provider polling is optional. If no adapter fits the project, keep using `qd ci run` for local trusted CI or `qd ci record-pass` with explicit evidence for externally completed CI.
 
 If the repository uses git worktrees, configure the convention once:
 
@@ -176,7 +176,7 @@ qd does not silently fall back from `sem` or `inspect` to plain git output. Miss
 After qd state changes that should be shared, export and commit the portable DAG snapshot:
 
 ```sh
-qd export --out roadmap/spec-dag.json
+qd export --deterministic
 git add roadmap/spec-dag.json
 git commit -m "Update qd DAG"
 ```

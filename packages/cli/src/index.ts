@@ -101,6 +101,9 @@ import {
 import { isCliEntrypoint } from "./entrypoint.js";
 import { methodCommand, requireMethodAcknowledged } from "./method.js";
 import { requiresMethodAcknowledgement } from "./command-gates.js";
+import { reconcileCommand } from "./reconcile.js";
+import * as githubCommands from "./github-ci-commands.js";
+import { planCommand } from "./plan-command.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
@@ -158,12 +161,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
         json,
       );
     case "doctor":
-      return doctorCommand(root, args.options, json);
+      return doctorCommand(root, action, args.options, json);
     case "migrate":
     case "upgrade":
       return migrateCommand(root, json);
     case "status":
-      return statusCommand(root, json);
+      return statusCommand(root, args.options, json);
     case "ready":
       return readyCommand(root, args.options, json);
     case "graph":
@@ -183,7 +186,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case "project":
       return registryCommand(root, "projects", action, args.options, json);
     case "node":
-      return nodeCommand(root, action, extra, args.options, json);
+      return nodeCommand(root, action, extra, args.command.slice(3), args.options, json);
     case "nodes":
       return nodesCommand(root, action, args.options, json);
     case "note":
@@ -233,10 +236,16 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       return gate(root, requiredArg(action, "node id"), args.options, json);
     case "advance":
       return advanceCommand(root, action, args.options, json);
+    case "reconcile":
+      return reconcileCommand(root, action, args.options, json);
     case "diff":
       return diffCommand(root, action, args.options, json);
     case "ci":
       return ciCommand(root, action, extra, args.options, json);
+    case "monitor":
+      return githubCommands.runMonitor(root, args.options, json);
+    case "sync-prs":
+      return githubCommands.syncPullRequestsCommand(root, args.options, json);
     case "check":
       return checkCommand(root, action, extra, args.options, json);
     case "verification":
@@ -286,22 +295,6 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     default:
       throw new Error(`Unknown command: ${group}`);
   }
-}
-
-async function planCommand(
-  root: string,
-  action: string | undefined,
-  options: Record<string, string | string[] | boolean>,
-  json: boolean,
-): Promise<void> {
-  if (action === "export")
-    return graphCommand(root, { ...options, format: stringOpt(options.format) ?? "json" }, json);
-  if (action === "import") {
-    throw new Error(
-      "qd plan import is reserved for the next trial iteration; use qd node add and qd edge add for now",
-    );
-  }
-  throw new Error(`Unknown plan action: ${action}`);
 }
 
 async function policyCommand(

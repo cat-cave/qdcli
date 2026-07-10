@@ -126,7 +126,7 @@ blocked, split, or revised instead of completed.
 
 `qd ci poll <node>` uses a configured provider adapter to wait for hosted CI and record the same pass/fail result. The first adapter is GitHub through `gh`; unsupported providers should be added as adapters rather than encoded into node schema.
 
-`qd merge <node>` records qd state only. It does not run `git merge`, open a pull request, squash commits, or push anything. Repositories should perform the actual git/GitHub merge through their normal workflow and use `qd merge` to record that the node satisfied qd's gate. Use `--use-existing-commit <sha>` when qd should record the commit produced by an external merge.
+Nodes may store `pr_number` and `pr_url`, populated by `qd claim --pr`, `qd node set-pr`, or branch auto-detection. `qd merge --via-pr` uses that identity to perform a protected GitHub merge and record its resulting commit. `qd merge --use-existing-commit <sha>` remains ledger-only for integrations performed elsewhere.
 
 ## Assignments
 
