@@ -94,14 +94,13 @@ export async function enqueueGitHubPullRequest(
       input.pullRequestUrl,
       "--repo",
       input.repository,
-      "--auto",
       "--match-head-commit",
       input.headOid,
     ],
     root,
   );
   if (result.code !== 0) {
-    throw new Error(`gh pr merge --auto failed: ${result.stderr || result.stdout}`);
+    throw new Error(`gh pr merge queue admission failed: ${result.stderr || result.stdout}`);
   }
   const deadline = Date.now() + (input.settleSeconds ?? 10) * 1000;
   let observation = await githubMergeQueueObservation(

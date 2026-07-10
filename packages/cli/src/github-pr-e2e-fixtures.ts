@@ -156,7 +156,7 @@ if [ "$1" = "api" ]; then
   exit 0
 fi
 if [ "$1 $2" = "pr merge" ]; then
-  if [[ "$*" == *"--auto"* ]]; then touch "${queuedMarker}"; else touch "${mergedMarker}"; fi
+  if ${options.queueEnabled ? "true" : "false"}; then touch "${queuedMarker}"; else touch "${mergedMarker}"; fi
   exit 0
 fi
 if [ "$1 $2" = "pr update-branch" ]; then
