@@ -23,7 +23,7 @@ The first publish for each scoped package must be public.
 
 ## Repository Governance
 
-Normal changes arrive through pull requests. `.github/workflows/ci.yml` exposes two required contexts, `quality` and `package`, on both `pull_request` and `merge_group`. The tracked `.github/rulesets/main.json` protects `main`, permits squash merges only, requires resolved review threads and both contexts, and enables a bounded native merge queue.
+Normal changes arrive through pull requests. `.github/workflows/ci.yml` exposes two required contexts, `quality` and `package`, on both `pull_request` and `merge_group`. The tracked `.github/rulesets/main.json` protects `main`, permits squash merges only, requires resolved review threads and both contexts, and enables a bounded native merge queue. The setup script also enables GitHub's repository-level auto-merge capability for orchestrators that intentionally use it; qd's already-green queue admission does not depend on that separate flag.
 
 After the workflow exists on the default branch, an administrator can apply the tracked repository merge settings and ruleset idempotently:
 
