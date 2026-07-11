@@ -57,7 +57,9 @@ describe("shell helpers", () => {
     });
     expect(result).toEqual({ exitCode: 0, timedOut: false, noOutputTimedOut: false });
     expect((await stat(logPath)).size).toBeGreaterThan(0);
-    expect(await readFile(logPath, "utf8")).toBe("stdoutstderr");
+    // stdout and stderr are separate pipes, so their cross-stream arrival order is undefined.
+    // The log must capture both streams completely without adding or dropping content.
+    expect(await readFile(logPath, "utf8")).toMatch(/^(?:stdoutstderr|stderrstdout)$/);
 
     await expect(runPolicyHook(root, "printf hook-stdout; exit 9", {})).rejects.toThrow(
       /hook-stdout/,
