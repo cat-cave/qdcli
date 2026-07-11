@@ -1,5 +1,13 @@
 # @cat-cave/qdcli
 
+## 0.4.1
+
+### Patch Changes
+
+- 2c44e9c: Fix dependency-scoped unblock hygiene, make explicit-id bulk node plans safely retryable with structured results, clarify export write receipts versus streamed graph data, add focused subcommand help, and expose node creation and patch schemas.
+- Updated dependencies [2c44e9c]
+  - @cat-cave/qdcli-core@0.4.1
+
 ## 0.4.0
 
 ### Minor Changes
