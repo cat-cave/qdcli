@@ -4,7 +4,9 @@ import type {
   NodeKind,
   NodeStatus,
   Priority,
+  QdEdge,
   QdAssignment,
+  QdNode,
   Risk,
   RunKind,
   VerificationEntry,
@@ -39,6 +41,33 @@ export interface BulkEdgeInput {
   from: string;
   to: string;
   type?: EdgeType;
+}
+
+export interface BulkNodeResult {
+  id: string;
+  status: "added" | "skipped-existing";
+  node: QdNode;
+}
+
+export interface BulkEdgeResult {
+  from: string;
+  to: string;
+  type: EdgeType;
+  status: "added" | "skipped-existing";
+  edge: QdEdge;
+}
+
+export interface BulkAddResult {
+  nodes: QdNode[];
+  edges: QdEdge[];
+  nodeResults: BulkNodeResult[];
+  edgeResults: BulkEdgeResult[];
+  summary: {
+    addedNodes: number;
+    skippedNodes: number;
+    addedEdges: number;
+    skippedEdges: number;
+  };
 }
 
 export interface AddAssignmentInput {

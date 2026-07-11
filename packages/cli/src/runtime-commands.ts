@@ -30,6 +30,7 @@ import {
   verificationSchema,
   waveSchema,
 } from "./schemas.js";
+import { nodePatchSchema, nodeSchema } from "./node-schemas.js";
 import { verificationSignoffReportSchema } from "./verification-report.js";
 import { reconciliationReportSchema } from "./reconciliation-report.js";
 import { reportTemplate, templateNames } from "./report-templates.js";
@@ -149,6 +150,8 @@ export function schemaCommand(
     finding: findingImportSchema(),
     "finding-import": findingImportSchema(),
     milestone: milestoneSchema(),
+    node: nodeSchema(),
+    "node-patch": nodePatchSchema(),
     "reality-check": {
       type: "object",
       required: ["summary", "findings", "dagChangesNeeded"],
@@ -178,14 +181,40 @@ export function schemaCommand(
     wave: waveSchema(),
   };
   if (action === "list" || !action) return output(Object.keys(schemas), json);
-  if (action === "example") return output(reportTemplate(requiredArg(name, "schema name")), true);
-  if (options.example) return output(reportTemplate(requiredArg(action, "schema name")), true);
+  if (action === "example") return output(schemaExample(requiredArg(name, "schema name")), true);
+  if (options.example) return output(schemaExample(requiredArg(action, "schema name")), true);
   if (action === "print") {
     const schema = schemas[requiredArg(name, "schema name") as keyof typeof schemas];
     if (!schema) throw new Error(`Unknown schema: ${name}`);
     return output(schema, true);
   }
   throw new Error(`Unknown schema action: ${action}`);
+}
+
+function schemaExample(name: string): Record<string, unknown> {
+  if (name === "node") {
+    return {
+      id: "provider-smoke",
+      title: "Verify provider integration",
+      kind: "test",
+      priority: "P1",
+      risk: "high",
+      spec: "Exercise the verified provider endpoint and capture typed success and failure evidence.",
+      acceptance:
+        "The provider smoke passes with valid credentials and fails safely with invalid credentials.",
+      verification: [{ type: "command", value: "node scripts/provider-smoke.mjs" }],
+      auditFocus: ["real provider evidence", "credential failure path"],
+    };
+  }
+  if (name === "node-patch") {
+    return {
+      priority: "P1",
+      spec: "Use the corrected provider path discovered during audit.",
+      acceptance: "The corrected path passes the provider smoke.",
+      auditFocus: ["path correction", "regression coverage"],
+    };
+  }
+  return reportTemplate(name);
 }
 
 export function templateCommand(action: string | undefined, json: boolean): void {

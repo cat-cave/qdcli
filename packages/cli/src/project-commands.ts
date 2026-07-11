@@ -233,7 +233,11 @@ export async function exportCommand(
   return output(
     {
       ok: true,
+      outputKind: "export-write-receipt",
       path: path.relative(root, resolvedOut),
+      graphWrittenTo: path.relative(root, resolvedOut),
+      stdoutContainsGraph: false,
+      streamCommand: "qd export --deterministic --out -",
       nodes: snapshot.nodes.length,
       edges: snapshot.edges.length,
       findings: snapshot.findings.length,

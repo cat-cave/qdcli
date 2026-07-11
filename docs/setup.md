@@ -122,7 +122,7 @@ qd sync --from roadmap/spec-dag.json --dry-run --write-diff roadmap/sync-diff.js
 qd sync --from roadmap/spec-dag.json
 ```
 
-`qd export` includes nodes, edges, registries, findings, runs, and node notes and writes `roadmap/spec-dag.json` by default. Use `--out -` for stdout. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` in automation when the local cache is expected to already match the committed JSON. Use `qd import --schema-mapping` for non-qd sources and `--replace` only when that source is intentionally authoritative.
+`qd export` includes nodes, edges, registries, findings, runs, and node notes and writes `roadmap/spec-dag.json` by default. The command's stdout is only a write receipt. Use `qd export --deterministic --out - > graph.json` to redirect the full graph. `qd sync` replaces the local cache from qd's canonical export format after validation. Use `qd sync --expect-clean --from roadmap/spec-dag.json --json` in automation when the local cache is expected to already match the committed JSON. Use `qd import --schema-mapping` for non-qd sources and `--replace` only when that source is intentionally authoritative.
 
 Configure the local preflight command and the canonical green command:
 

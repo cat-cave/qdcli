@@ -86,7 +86,7 @@ Bulk mint plan for `qd nodes add-bulk --from-json <file>`:
 }
 ```
 
-Bulk minting is transactional. qd validates the full plan, auto-registers referenced groups, projects, and milestones, and writes the nodes and edges as one batch.
+Bulk minting is transactional. qd validates the full plan, auto-registers referenced groups, projects, and milestones, and writes the nodes and edges as one batch. Explicit ids make retries idempotent: exact existing nodes and edges are reported as `skipped-existing`; changed fields on an existing id produce a named conflict and roll back the whole invocation. Use `qd schema print node` and `qd schema print node-patch` for the canonical JSON shapes.
 
 Canonical qd exports preserve typed blockers on the node:
 

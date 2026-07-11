@@ -44,7 +44,6 @@ import { listEdges, listNodes, readyNodes } from "./graph-nodes.js";
 export {
   addEdge,
   addNode,
-  addNodesBulk,
   cancelNode,
   claimNode,
   finishRun,
@@ -61,6 +60,7 @@ export {
   setupProject,
   updateNode,
 } from "./graph-nodes.js";
+export { addNodesBulk } from "./graph-bulk.js";
 export { addNodeNote, listNodeNotes } from "./graph-notes.js";
 import { graphSnapshot } from "./graph-snapshot.js";
 export {
@@ -82,7 +82,10 @@ export type {
 export type {
   AddAssignmentInput,
   AddNodeInput,
+  BulkAddResult,
   BulkEdgeInput,
+  BulkEdgeResult,
+  BulkNodeResult,
   GateExplanation,
   ListAssignmentFilters,
   ListRunFilters,

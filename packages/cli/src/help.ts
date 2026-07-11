@@ -138,7 +138,15 @@ export function commandHelp(group: string, action?: string): string {
     doctor:
       "qd doctor [node] [--strict] [--json]\nChecks project integrity, or explains every unsatisfied lifecycle gate and exact next action for one node.",
     export:
-      "qd export [--out <path>|-] [--deterministic]\nWrites roadmap/spec-dag.json by default. Pass --out - to stream a canonical export to stdout.",
+      "qd export [--out <path>|-] [--deterministic]\nWrites the full graph to roadmap/spec-dag.json by default and prints only a write receipt. Pass --out - to stream the full canonical graph to stdout, for example: qd export --deterministic --out - > graph.json.",
+    unblock:
+      'qd unblock <node> (--summary <text> --evidence <path-or-proof> | --from-run <passed-run> --summary <text> | --from-report <unblock-report.json>) [--json]\nClears only the node\'s evidenced explicit blocker. Unfinished dependencies still keep it out of qd ready. Example: qd unblock api-smoke --summary "Provider restored" --evidence reports/provider-restored.md',
+    "node edit":
+      "qd node edit <node> [--from-json <patch.json>] [--title <text>] [--spec-file <path>] [--acceptance-file <path>] [--status <status>] [--json]\nApplies a partial node patch; blocker fields must use qd block/unblock. Inspect the JSON shape with qd schema print node-patch. Example: qd node edit api-smoke --from-json api-smoke.patch.json",
+    "node cancel":
+      "qd node cancel <node> [--json]\nMarks one node cancelled without deleting its history. Example: qd node cancel superseded-parser --json",
+    "nodes add-bulk":
+      "qd nodes add-bulk --from-json <plan.json> [--json]\nAtomically adds nodes and edges. Exact explicit-id retries return added/skipped-existing results; conflicting existing ids fail with named differing fields and write nothing. Inspect the shape with qd schema print node. Example: qd nodes add-bulk --from-json roadmap/mint-plan.json --json",
     verification:
       "qd verification list <node> | sign-off <node> --index <n> --note <text> [--evidence <path>] | sign-off <node> --all --from-report <json>\nLists stable 1-based verification indices and records only exact declared verification evidence.",
     check:
