@@ -310,8 +310,15 @@ export async function unblockNode(
     if (runRow.status !== "passed") throw new Error(`Run ${runRow.id} is not passed`);
     evidence = evidence ?? `run:${input.fromRunId}`;
   }
-  const gate = await gateNode(root, nodeId, { ignoreNodeBlocker: true });
-  if (!gate.ok) throw new Error("Cannot unblock while qd gate is blocked");
+  const gate = await gateNode(root, nodeId, {
+    ignoreNodeBlocker: true,
+    ignoreBlockedDependencies: true,
+  });
+  if (!gate.ok) {
+    throw new Error(
+      `Cannot unblock ${nodeId}: ${gate.explanations.map((item) => item.message).join("; ")}`,
+    );
+  }
   const db = await openDatabase(root);
   const now = new Date().toISOString();
   await run(

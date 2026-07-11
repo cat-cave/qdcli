@@ -139,7 +139,7 @@ The exported JSON is the committed source of truth for sharing qd state across m
 
 qd-native exports include registries, nodes, edges, findings, runs, and node notes. They sync without a mapping file.
 
-`qd export` writes `roadmap/spec-dag.json` by default; add `--deterministic` for a committed stable snapshot and use `--out -` for explicit stdout. Use `qd sync --from <qd-export.json> --dry-run --json` to validate the canonical export and inspect live-only, export-only, and changed nodes before replacing the local cache. Add `--write-diff <json>` when an orchestrator should leave a reviewable drift artifact. Add `--expect-clean` in automation when the local cache must already match the committed JSON. Use `qd import --replace` only for authoritative replacement from a non-qd or mapped import source; deprecated `--merge` is a compatibility alias. Plain `qd import` remains empty-DAG-only.
+`qd export` writes the full graph to `roadmap/spec-dag.json` by default; add `--deterministic` for a committed stable snapshot. Its stdout is a write receipt, not graph data. Use `qd export --deterministic --out - > graph.json` when stdout redirection is required. Use `qd sync --from <qd-export.json> --dry-run --json` to validate the canonical export and inspect live-only, export-only, and changed nodes before replacing the local cache. Add `--write-diff <json>` when an orchestrator should leave a reviewable drift artifact. Add `--expect-clean` in automation when the local cache must already match the committed JSON. Use `qd import --replace` only for authoritative replacement from a non-qd or mapped import source; deprecated `--merge` is a compatibility alias. Plain `qd import` remains empty-DAG-only.
 
 Use `qd import` for existing DAGs:
 
@@ -274,7 +274,7 @@ qd node add --title "Audit cleanup" --spec-file /tmp/spec.md --acceptance-file /
 
 Bulk mint plans may be either a node array or an object with `nodes[]` and optional `edges[]`. Node JSON is strict and uses the same typed fields as qd nodes: malformed strings, arrays, enums, or verification entries fail instead of being silently dropped.
 
-`qd nodes add-bulk` is all-or-nothing. qd validates every node and edge, registers referenced metadata for the batch, then writes in one transaction. If any node or edge is invalid, no partial DAG is left behind.
+`qd nodes add-bulk` is atomic and retry-safe when plan nodes have explicit ids. qd validates every node and edge, registers referenced metadata, then writes in one transaction. An exact retry returns per-node and per-edge `skipped-existing` results instead of failing. If an existing id has different plan fields, qd names the id and differing fields and writes nothing; it never silently overwrites live lifecycle state. Inputs without explicit ids mint new unique ids and therefore cannot be idempotently correlated across retries.
 
 Use structured blockers for project state outside dependency edges:
 

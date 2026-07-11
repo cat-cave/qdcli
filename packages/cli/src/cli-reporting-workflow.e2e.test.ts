@@ -60,6 +60,56 @@ describe("qd CLI reporting workflow surfaces", () => {
     );
     const bulk = await qdJson("nodes", "add-bulk", "--from-json", "bulk.json", "--json");
     expect(bulk.nodes.map((node: any) => node.id)).toEqual(["dependency", "feature"]);
+    expect(bulk.summary).toEqual({
+      addedNodes: 2,
+      skippedNodes: 0,
+      addedEdges: 1,
+      skippedEdges: 0,
+    });
+    const retriedBulk = await qdJson("nodes", "add-bulk", "--from-json", "bulk.json", "--json");
+    expect(retriedBulk.nodes).toEqual([]);
+    expect(retriedBulk.edges).toEqual([]);
+    expect(retriedBulk.nodeResults.map((result: any) => result.status)).toEqual([
+      "skipped-existing",
+      "skipped-existing",
+    ]);
+    expect(retriedBulk.edgeResults[0].status).toBe("skipped-existing");
+    await writeFile(
+      path.join(root, "bulk-conflict.json"),
+      `${JSON.stringify({
+        nodes: [
+          {
+            id: "fresh-before-conflict",
+            title: "Fresh before conflict",
+            spec: "This write must roll back.",
+            acceptance: "The node is absent after conflict.",
+          },
+          {
+            id: "dependency",
+            title: "Dependency",
+            groupName: "runtime",
+            projects: ["app"],
+            milestone: "baseline",
+            spec: "Changed dependency work.",
+            acceptance: "Dependency work is done.",
+          },
+        ],
+      })}\n`,
+      "utf8",
+    );
+    await expectQdFailure(
+      /bulk node dependency already exists with different fields: spec/,
+      "nodes",
+      "add-bulk",
+      "--from-json",
+      "bulk-conflict.json",
+    );
+    await expectQdFailure(
+      /Node not found: fresh-before-conflict/,
+      "node",
+      "show",
+      "fresh-before-conflict",
+    );
 
     expect((await qdJson("ready", "--json")).map((node: any) => node.id)).toEqual(["dependency"]);
     expect(await qd("node", "list", "--fields", "id,status", "--tsv")).toContain("dependency");

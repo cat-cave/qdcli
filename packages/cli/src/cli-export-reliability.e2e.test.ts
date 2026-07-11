@@ -23,7 +23,14 @@ describe("qd export reliability", () => {
       ready: 1,
     });
     const result = await qdJson("export", "--deterministic", "--json");
-    expect(result.path).toBe("roadmap/spec-dag.json");
+    expect(result).toMatchObject({
+      outputKind: "export-write-receipt",
+      path: "roadmap/spec-dag.json",
+      graphWrittenTo: "roadmap/spec-dag.json",
+      stdoutContainsGraph: false,
+      streamCommand: "qd export --deterministic --out -",
+      nodes: 1,
+    });
     await stat(path.join(root, "roadmap/spec-dag.json"));
     const saved = JSON.parse(await readFile(path.join(root, "roadmap/spec-dag.json"), "utf8"));
     expect(saved.exported_at).toBe("1970-01-01T00:00:00.000Z");

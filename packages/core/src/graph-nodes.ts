@@ -2,18 +2,16 @@ import { all, applyMigrations, get, initProject, openDatabase, run } from "./db.
 import {
   assertNodeQuality,
   assertNodeRegistryValues,
-  ensureNodeMetadataRegistered,
   hydrateNode,
   insertEdge,
   insertNode,
-  nodeExists,
   nodeFromInput,
   slugify,
   uniqueNodeId,
   withoutUndefined,
   type NodeRow,
 } from "./graph-internal.js";
-import type { AddNodeInput, BulkEdgeInput, ListRunFilters } from "./graph-types.js";
+import type { AddNodeInput, ListRunFilters } from "./graph-types.js";
 import type {
   EdgeType,
   FindingStatus,
@@ -39,48 +37,6 @@ export async function addNode(root: string, input: AddNodeInput): Promise<QdNode
   await assertNodeRegistryValues(db, node);
   await insertNode(db, node);
   return node;
-}
-
-export async function addNodesBulk(
-  root: string,
-  input: { nodes: AddNodeInput[]; edges?: BulkEdgeInput[] },
-): Promise<{ nodes: QdNode[]; edges: QdEdge[] }> {
-  const db = await openDatabase(root);
-  await applyMigrations(db);
-  await run(db, "begin immediate");
-  try {
-    const now = new Date().toISOString();
-    const reserved = new Set<string>();
-    const nodes: QdNode[] = [];
-    for (const nodeInput of input.nodes) {
-      const id = nodeInput.id ?? (await uniqueNodeId(db, slugify(nodeInput.title), reserved));
-      if (reserved.has(id)) throw new Error(`duplicate node id in bulk add: ${id}`);
-      reserved.add(id);
-      const node = nodeFromInput(nodeInput, id, now);
-      assertNodeQuality(node);
-      nodes.push(node);
-    }
-    await ensureNodeMetadataRegistered(db, nodes, now);
-    for (const node of nodes) await insertNode(db, node);
-
-    const edges: QdEdge[] = [];
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    for (const edgeInput of input.edges ?? []) {
-      const type = edgeInput.type ?? "requires";
-      if (!nodeIds.has(edgeInput.from) && !(await nodeExists(db, edgeInput.from))) {
-        throw new Error(`edge references missing from node: ${edgeInput.from}`);
-      }
-      if (!nodeIds.has(edgeInput.to) && !(await nodeExists(db, edgeInput.to))) {
-        throw new Error(`edge references missing to node: ${edgeInput.to}`);
-      }
-      edges.push(await insertEdge(db, edgeInput.from, edgeInput.to, type, now));
-    }
-    await run(db, "commit");
-    return { nodes, edges };
-  } catch (error) {
-    await run(db, "rollback");
-    throw error;
-  }
 }
 
 export async function updateNode(

@@ -196,7 +196,11 @@ export async function disposeFinding(
 export async function gateNode(
   root: string,
   nodeId: string,
-  options: { ignoreRunningAuditRunId?: string | null; ignoreNodeBlocker?: boolean } = {},
+  options: {
+    ignoreRunningAuditRunId?: string | null;
+    ignoreNodeBlocker?: boolean;
+    ignoreBlockedDependencies?: boolean;
+  } = {},
 ): Promise<{
   ok: boolean;
   blocking: QdFinding[];
@@ -218,17 +222,19 @@ export async function gateNode(
       [nodeId],
     )
   ).filter((runRow) => runRow.id !== options.ignoreRunningAuditRunId);
-  const blockedDependencies = (
-    await all<NodeRow>(
-      db,
-      `select dep.*
-      from edges e
-      join nodes dep on dep.id = e.from_node
-      where e.to_node = ? and e.type = 'requires' and dep.status <> 'done'
-      order by dep.id asc`,
-      [nodeId],
-    )
-  ).map(hydrateNode);
+  const blockedDependencies = options.ignoreBlockedDependencies
+    ? []
+    : (
+        await all<NodeRow>(
+          db,
+          `select dep.*
+          from edges e
+          join nodes dep on dep.id = e.from_node
+          where e.to_node = ? and e.type = 'requires' and dep.status <> 'done'
+          order by dep.id asc`,
+          [nodeId],
+        )
+      ).map(hydrateNode);
   const explanations: GateExplanation[] = [
     ...blocking.map((finding) => ({
       code: "blockingFinding" as const,

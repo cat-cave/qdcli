@@ -106,7 +106,7 @@ qd template reconciliation-report > /tmp/qd-reconciliation.json
 qd reconcile <node> --commit <integrated-sha> --from-report /tmp/qd-reconciliation.json
 ```
 
-`qd export --deterministic` writes `roadmap/spec-dag.json` by default. Pass `--out -` only when the canonical JSON should be streamed to stdout.
+`qd export --deterministic` writes the full graph to `roadmap/spec-dag.json` and prints only a small write receipt to stdout. Shell redirection of that receipt is not an export. To stream the full canonical graph, use `qd export --deterministic --out - > graph.json`.
 
 Start the installed read-only viewer:
 
