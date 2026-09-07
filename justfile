@@ -39,6 +39,9 @@ pack:
 npm-smoke:
   ./scripts/validate-npm-package.sh
 
+hello-e2e:
+  @./scripts/hello-e2e.sh
+
 mutation:
   corepack pnpm exec stryker run
 
