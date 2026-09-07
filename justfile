@@ -4,25 +4,25 @@ default:
   just --list
 
 install:
-  corepack pnpm install
+	corepack pnpm install
 
-build:
-  corepack pnpm exec vp run -r build
+build: install
+	corepack pnpm exec vp run -r build
 
-test:
-  corepack pnpm exec vp test
+test: build
+	corepack pnpm exec vp test
 
-coverage:
-  corepack pnpm exec vp test run --coverage
+coverage: build
+	corepack pnpm exec vp test run --coverage
 
-lint:
-  corepack pnpm exec vp lint
+lint: build
+	corepack pnpm exec vp lint
 
-typecheck:
-  corepack pnpm exec vp check
+typecheck: build
+	corepack pnpm exec vp check
 
-typecheck-tsgo:
-  corepack pnpm exec vp run typecheck:tsgo
+typecheck-tsgo: build
+	corepack pnpm exec vp run typecheck:tsgo
 
 format:
   corepack pnpm exec vp fmt --write .
@@ -30,8 +30,8 @@ format:
 format-check:
   corepack pnpm exec vp fmt --check .
 
-ci:
-  corepack pnpm exec vp run ci
+ci: install
+	corepack pnpm exec vp run ci
 
 pack:
   corepack pnpm exec vp run pack
