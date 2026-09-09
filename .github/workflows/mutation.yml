@@ -11,6 +11,10 @@ permissions:
 jobs:
   mutation:
     runs-on: ubuntu-latest
+    # t133: weekly scheduled lane (not PR) — explicit cap instead of the
+    # 360-min GHA default. Stryker over the monorepo; recent runs fail in
+    # <1 min, no successful sample yet, so 60 is the provisional ceiling.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31.10.6

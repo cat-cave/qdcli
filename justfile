@@ -3,8 +3,12 @@ set shell := ["bash", "-eo", "pipefail", "-c"]
 default:
   just --list
 
+# t133 (2026-09-09 owner ruling): --frozen-lockfile everywhere — CI calls this
+# recipe, and a mutable install can drift or stall waiting on lockfile
+# reconciliation; packageManager is pinned (pnpm@11.1.0) so corepack never
+# prompts to download a version. Local unlocked installs: run pnpm directly.
 install:
-	corepack pnpm install
+    corepack pnpm install --frozen-lockfile
 
 build: install
 	corepack pnpm exec vp run -r build

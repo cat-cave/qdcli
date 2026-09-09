@@ -16,6 +16,9 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # t133 (2026-09-09 owner ruling): explicit PR-lane cap at 20 min — the
+    # GHA default is 360. Observed successful runs: ~1 min.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31.10.6
@@ -24,6 +27,8 @@ jobs:
 
   package:
     runs-on: ubuntu-latest
+    # t133: explicit PR-lane cap at 20 min. Observed successful runs: ~1 min.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31.10.6
