@@ -13,6 +13,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # t133: tag-triggered lane — explicit cap instead of the 360-min GHA
+    # default. Observed successful publishes: ~1.5 min.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
